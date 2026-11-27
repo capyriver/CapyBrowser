@@ -7,78 +7,94 @@
 <meta name="description" content="A single-file MCP server that drives your system Chrome / Edge / Brave / Chromium over CDP. Built for small local models. One link to install.">
 <meta property="og:title" content="CapyBrowser — give any LLM a real browser">
 <meta property="og:description" content="Single-file MCP server for Chrome / Edge / Brave / Chromium. Works with 4B local models. Connectors, control panel, one capy.yaml.">
-<meta property="og:image" content="https://capybrowser.pages.dev/assets/social-preview.png">
 <meta property="og:url" content="https://capybrowser.pages.dev/">
-<meta name="twitter:card" content="summary_large_image">
-<link rel="icon" href="assets/icons/capy-orange.svg" type="image/svg+xml">
+<meta name="theme-color" content="#120d0a">
 <style>
-:root{--bg:#120d0a;--panel:#1c1511;--panel2:#241b16;--line:#3a2b22;--text:#f3e7dc;--muted:#b49b89;--dim:#8a7464;--accent:#d9824f;--accent2:#f2b84b;
---mono:ui-monospace,"JetBrains Mono","Cascadia Code",Consolas,Menlo,monospace}
+:root{--bg:#120d0a;--panel:#1c1511;--panel2:#241b16;--line:#3a2b22;--text:#f3e7dc;--muted:#b49b89;--dim:#8a7464;--accent:#d9824f;--accent2:#f2b84b;--ok:#5cb85c;--warn:#f2b84b;--mono:ui-monospace,"JetBrains Mono","Cascadia Code",Consolas,Menlo,monospace}
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
 body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 a{color:var(--accent2)}
-img{max-width:100%;height:auto}
+img.px{image-rendering:pixelated}
 .wrap{max-width:1120px;margin:0 auto;padding:0 20px}
 nav.top{position:sticky;top:0;z-index:10;background:#120d0aee;backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
 nav.top .wrap{display:flex;align-items:center;gap:14px;height:60px}
-nav.top .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:18px;color:var(--text);text-decoration:none}
-nav.top .brand img{width:34px;image-rendering:pixelated}
-nav.top .brand span{color:var(--accent)}
-nav.top .links{display:flex;gap:18px;margin-left:auto;align-items:center}
-nav.top .links a{color:var(--muted);text-decoration:none;font-weight:600;font-size:15px}
-nav.top .links a:hover{color:var(--text)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:18px;color:var(--text);text-decoration:none}
+.brand img{width:36px}.brand span{color:var(--accent)}
+.links{display:flex;gap:18px;margin-left:auto;align-items:center}
+.links a{color:var(--muted);text-decoration:none;font-weight:600;font-size:15px}.links a:hover{color:var(--text)}
 .lang{display:flex;gap:4px}
 .lang button{background:none;border:1px solid var(--line);color:var(--muted);padding:3px 9px;border-radius:999px;cursor:pointer;font:inherit;font-size:13px}
 .lang button.on{background:var(--accent);border-color:var(--accent);color:#1b120d;font-weight:700}
-@media(max-width:760px){nav.top .links a.hide-m{display:none}nav.top .links{gap:10px}nav.top .wrap{gap:8px}}
-.step pre{white-space:pre-wrap;word-break:break-all}
-header.hero{padding:48px 0 30px;text-align:center}
-header.hero .banner{border-radius:18px;border:1px solid var(--line);box-shadow:0 20px 60px #0008}
-header.hero h1{font-size:clamp(28px,4.6vw,46px);line-height:1.15;margin:34px 0 12px}
-header.hero h1 em{font-style:normal;color:var(--accent)}
-header.hero p.lead{color:var(--muted);font-size:clamp(16px,2vw,19px);max-width:760px;margin:0 auto 26px}
-.cmd{display:flex;align-items:center;gap:10px;max-width:780px;margin:0 auto;background:#0d0907;border:1px solid var(--accent);border-radius:14px;padding:12px 12px 12px 18px;text-align:left}
-.cmd code{flex:1;font-family:var(--mono);font-size:14px;color:#ffd9c2;overflow-x:auto;white-space:nowrap}
+@media(max-width:760px){.links a.hide-m{display:none}.links{gap:10px}nav.top .wrap{gap:8px}}
+.hero{padding:44px 0 34px}
+.hero .grid2{display:grid;grid-template-columns:1.15fr .85fr;gap:34px;align-items:center}
+.hero .grid2>*{min-width:0}
+@media(max-width:880px){.hero .grid2{grid-template-columns:1fr}}
+.hero h1{font-size:clamp(32px,5vw,56px);line-height:1.08;margin:0 0 14px;letter-spacing:-.5px}
+.hero h1 em{font-style:normal;color:var(--accent)}
+.hero p.lead{color:var(--muted);font-size:clamp(16px,2vw,19px);margin:0 0 24px}
+.cmd{display:flex;align-items:center;gap:10px;background:#0d0907;border:1px solid var(--accent);border-radius:14px;padding:10px 10px 10px 16px}
+.cmd code{flex:1;min-width:0;font-family:var(--mono);font-size:13.5px;color:#ffd9c2;overflow-x:auto;white-space:nowrap}
 .btn{display:inline-flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:9px 16px;border-radius:11px;cursor:pointer;text-decoration:none;font:inherit;font-weight:600;white-space:nowrap}
-.btn:hover{border-color:var(--accent)}
-.btn.primary{background:var(--accent);border-color:var(--accent);color:#1b120d}
-.ctas{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:22px}
+.btn:hover{border-color:var(--accent)}.btn.primary{background:var(--accent);border-color:var(--accent);color:#1b120d}
+.ctas{display:flex;gap:12px;flex-wrap:wrap;margin-top:18px}
+.mock{background:#fff6ee;border-radius:18px;overflow:hidden;box-shadow:0 24px 70px #000a;color:#3a2418;position:relative}
+.mock .bar{background:#2b1d16;height:40px;display:flex;align-items:center;gap:8px;padding:0 14px}
+.mock .dot{width:12px;height:12px;border-radius:50%}
+.mock .url{flex:1;min-width:0;background:#4a3529;border-radius:10px;height:22px;color:#e8d5c7;font:12px var(--mono);display:flex;align-items:center;padding:0 10px;margin-left:8px;overflow:hidden;white-space:nowrap}
+.mock .body{padding:18px 18px 22px;font:13px var(--mono);line-height:1.7}
+.mock .ln{height:12px;border-radius:6px;background:#efe0d4;margin:6px 0}
+.mock .row{display:flex;gap:10px;margin:14px 0;flex-wrap:wrap}
+.mock .chip{border-radius:9px;padding:6px 12px;border:1px solid #d9bba6;background:#fff}
+.mock .chip.a{background:var(--accent);border-color:var(--accent);color:#fff}
+.mock .foot{background:#f6eae0;border-radius:10px;padding:8px 12px;color:#6e4329;margin-right:90px}
+.mock img.capy{position:absolute;right:12px;bottom:8px;width:84px}
 section{padding:54px 0;border-top:1px solid #2a1f19}
 section h2{font-size:clamp(24px,3vw,32px);margin:0 0 8px;display:flex;align-items:center;gap:12px}
-section h2 img{width:46px;image-rendering:pixelated}
-section p.sub{color:var(--muted);margin:0 0 28px;max-width:800px}
+section h2 img{width:48px}
+p.sub{color:var(--muted);margin:0 0 28px;max-width:820px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px}
-.card h3{margin:6px 0 6px;font-size:17px}
-.card p{margin:0;color:var(--muted);font-size:15px}
-.card img.ic{width:52px;image-rendering:pixelated}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;min-width:0}
+.card h3{margin:6px 0 6px;font-size:17px}.card p{margin:0;color:var(--muted);font-size:15px}
+.card img{width:54px}
 .steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;counter-reset:s}
-.step{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;position:relative}
+.step{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;position:relative;min-width:0}
 .step:before{counter-increment:s;content:counter(s);position:absolute;top:-14px;left:18px;background:var(--accent);color:#1b120d;font-weight:800;width:30px;height:30px;border-radius:50%;display:grid;place-items:center}
-.step h3{margin:8px 0 8px;font-size:17px}
-pre{background:#0d0907;border:1px solid var(--line);border-radius:12px;padding:14px;overflow-x:auto;font-family:var(--mono);font-size:13px;line-height:1.55;margin:10px 0 0;color:#f3e7dc}
-pre .c{color:#8a7464}pre .k{color:#f2b84b}pre .s{color:#ffd9c2}
-.shots{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.shots figure{margin:0;background:var(--panel);border:1px solid var(--line);border-radius:16px;overflow:hidden}
-.shots figcaption{padding:12px 16px;color:var(--muted);font-size:14px}
-@media(max-width:820px){.shots{grid-template-columns:1fr}}
+.step h3{margin:8px 0 8px;font-size:17px}.step p{color:var(--muted);margin:0}
+pre{background:#0d0907;border:1px solid var(--line);border-radius:12px;padding:14px;overflow-x:auto;font-family:var(--mono);font-size:13px;line-height:1.55;margin:10px 0 0;color:var(--text);max-width:100%}
+.step pre{white-space:pre-wrap;word-break:break-all}
+.c{color:var(--dim)}.k{color:var(--accent2)}.s{color:#ffd9c2}
+.apps{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.apps span{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:14px}
+.ui{background:var(--panel);border:1px solid var(--line);border-radius:18px;overflow:hidden}
+.ui .head{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line);background:#1e140f}
+.ui .head img{width:30px}.ui .head b span{color:var(--accent)}
+.ui .tabs{display:flex;gap:4px;padding:8px 14px 0;border-bottom:1px solid var(--line);overflow-x:auto}
+.ui .tabs span{padding:7px 12px;color:var(--muted);font-size:14px;font-weight:600;white-space:nowrap}
+.ui .tabs span.on{color:var(--text);border-bottom:2px solid var(--accent)}
+.ui .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;padding:16px}
+.uc{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:12px;font-size:14px}
+.uc b{font-size:15px}.uc .t{font:11px var(--mono);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:1px 6px;margin:0 6px}
+.badge{font-size:11px;font-weight:700;border:1px solid currentColor;border-radius:999px;padding:1px 8px}
+.uc .d{color:var(--muted);margin:6px 0}.uc .m{font:11.5px var(--mono);color:var(--dim);word-break:break-all}
+.sw{display:inline-block;width:34px;height:20px;border-radius:999px;background:var(--accent);position:relative;vertical-align:middle;margin-right:6px}
+.sw:after{content:"";position:absolute;width:14px;height:14px;border-radius:50%;background:#fff;top:3px;right:3px}
+.sw.off{background:#3b2c23}.sw.off:after{left:3px;right:auto;background:#d8c7ba}
+.mini{display:inline-block;border:1px solid var(--line);border-radius:8px;padding:2px 8px;font-size:12.5px;margin-top:8px}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start}
-@media(max-width:820px){.two{grid-template-columns:1fr}}
-.two>*,.steps>*,.grid>*,.cmd code{min-width:0}pre{max-width:100%}
-.apps{display:flex;flex-wrap:wrap;gap:10px}
-.apps span{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:6px 14px;font-size:14px}
+.two>*{min-width:0}
+@media(max-width:860px){.two{grid-template-columns:1fr}}
+.pv .el{color:#ffd9c2}
 details{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 18px;margin-bottom:10px}
-details summary{cursor:pointer;font-weight:700}
-details p{color:var(--muted);margin:10px 0 0}
-footer{padding:40px 0 10px;text-align:center;color:var(--dim);font-size:14px}
-footer img.wave{display:block;width:100%;height:90px;margin-top:20px}
-.tok{color:var(--accent2)}
+details summary{cursor:pointer;font-weight:700}details p{color:var(--muted);margin:10px 0 0}
+footer{padding:40px 0 30px;text-align:center;color:var(--dim);font-size:14px;border-top:1px solid #2a1f19}
+footer img{width:64px}
 </style>
 </head>
 <body>
 <nav class="top"><div class="wrap">
-  <a class="brand" href="#"><img src="assets/icons/capy-orange.svg" alt=""><b>Capy<span>Browser</span></b></a>
+  <a class="brand" href="#"><img class="px" data-px="orange" alt=""><b>Capy<span>Browser</span></b></a>
   <div class="links">
     <a href="#features" class="hide-m" data-i18n="nav_features">Features</a>
     <a href="#start" class="hide-m" data-i18n="nav_start">Quick start</a>
@@ -89,33 +105,39 @@ footer img.wave{display:block;width:100%;height:90px;margin-top:20px}
   </div>
 </div></nav>
 
-<header class="hero"><div class="wrap">
-  <img class="banner" src="assets/banner.svg" alt="CapyBrowser — give any LLM a real browser" width="1280" height="400">
-  <h1 data-i18n-html="hero_title">Give <em>any LLM</em> a real browser</h1>
-  <p class="lead" data-i18n="hero_lead">A single-file MCP server that drives the Chrome, Edge, Brave or Chromium you already have. Built for small local models — even a 4B model on a laptop can search, read, click and fill forms.</p>
-  <div class="cmd"><code id="cmd">uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser</code>
-    <button class="btn primary" id="copy" data-i18n="copy">Copy</button></div>
-  <div class="ctas">
-    <a class="btn primary" href="#start" data-i18n="cta_start">Get started</a>
-    <a class="btn" href="https://github.com/capyriver/CapyBrowser" data-i18n="cta_github">View on GitHub</a>
+<header class="hero"><div class="wrap grid2">
+  <div>
+    <h1 data-i18n-html="hero_title">Give <em>any LLM</em> a real browser</h1>
+    <p class="lead" data-i18n="hero_lead">A single-file MCP server that drives the Chrome, Edge, Brave or Chromium you already have. Built for small local models — even a 4B model on a laptop can search, read, click and fill forms.</p>
+    <div class="cmd"><code id="cmd">uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser</code><button class="btn primary" id="copy" data-i18n="copy">Copy</button></div>
+    <div class="ctas"><a class="btn primary" href="#start" data-i18n="cta_start">Get started</a><a class="btn" href="https://github.com/capyriver/CapyBrowser" data-i18n="cta_github">View on GitHub</a></div>
+  </div>
+  <div class="mock" aria-hidden="true">
+    <div class="bar"><i class="dot" style="background:#ff6b5e"></i><i class="dot" style="background:#ffc24b"></i><i class="dot" style="background:#53d769"></i><div class="url">https://shop.example/oranges</div></div>
+    <div class="body">
+      <div class="ln" style="width:60%"></div><div class="ln" style="width:88%"></div><div class="ln" style="width:74%"></div>
+      <div class="row"><span class="chip a">[3] click</span><span class="chip">[4] type_text</span></div>
+      <div class="foot">open_url · scroll · go_back · find_tools</div>
+    </div>
+    <img class="px capy" data-px="rocket" alt="">
   </div>
 </div></header>
 
 <section id="features"><div class="wrap">
-  <h2><img src="assets/icons/capy-bolt.svg" alt=""><span data-i18n="f_title">Why CapyBrowser</span></h2>
+  <h2><img class="px" data-px="bolt" alt=""><span data-i18n="f_title">Why CapyBrowser</span></h2>
   <p class="sub" data-i18n="f_sub">No Playwright, no Selenium, no Node — one Python file and the browser you already have.</p>
   <div class="grid">
-    <div class="card"><img class="ic" src="assets/icons/capy-window.svg" alt=""><h3 data-i18n="f1_t">Made for small models</h3><p data-i18n="f1_p">Every page becomes a short view: visible text plus numbered [id] elements, capped at ~3,500 characters.</p></div>
-    <div class="card"><img class="ic" src="assets/icons/capy-rocket.svg" alt=""><h3 data-i18n="f2_t">One link to install</h3><p data-i18n="f2_p">uvx downloads everything on first run. Works on Windows, macOS and Linux with Chrome, Edge, Brave or Chromium.</p></div>
-    <div class="card"><img class="ic" src="assets/icons/capy-plug.svg" alt=""><h3 data-i18n="f3_t">All your MCP servers</h3><p data-i18n="f3_p">Add GitHub, Notion, files, databases or any MCP server in capy.yaml — the model reaches them through three compact router tools.</p></div>
-    <div class="card"><img class="ic" src="assets/icons/capy-sliders.svg" alt=""><h3 data-i18n="f4_t">Control panel</h3><p data-i18n="f4_p">capybrowser ui: add connectors from templates, test tools, manage secrets and see exactly what the model sees.</p></div>
-    <div class="card"><img class="ic" src="assets/icons/capy-shield.svg" alt=""><h3 data-i18n="f5_t">Safe by default</h3><p data-i18n="f5_p">Separate browser with a fresh profile, DevTools on 127.0.0.1 only, tokens via ${VAR} and masked in every answer.</p></div>
-    <div class="card"><img class="ic" src="assets/icons/capy-heart.svg" alt=""><h3 data-i18n="f6_t">Self-healing</h3><p data-i18n="f6_p">Crashed or hung browser restarts and reopens the page. Popups, dialogs, overlays, SPAs and input masks just work.</p></div>
+    <div class="card"><img class="px" data-px="window" alt=""><h3 data-i18n="f1_t">Made for small models</h3><p data-i18n="f1_p">Every page becomes a short view: visible text plus numbered [id] elements, capped at ~3,500 characters.</p></div>
+    <div class="card"><img class="px" data-px="rocket" alt=""><h3 data-i18n="f2_t">One link to install</h3><p data-i18n="f2_p">uvx downloads everything on first run. Windows, macOS and Linux with Chrome, Edge, Brave or Chromium.</p></div>
+    <div class="card"><img class="px" data-px="plug" alt=""><h3 data-i18n="f3_t">All your MCP servers</h3><p data-i18n="f3_p">Add GitHub, Notion, files, databases or any MCP server in capy.yaml — the model reaches them through three compact router tools.</p></div>
+    <div class="card"><img class="px" data-px="sliders" alt=""><h3 data-i18n="f4_t">Control panel</h3><p data-i18n="f4_p">capybrowser ui: add connectors from templates, test tools, manage secrets and see exactly what the model sees.</p></div>
+    <div class="card"><img class="px" data-px="shield" alt=""><h3 data-i18n="f5_t">Safe by default</h3><p data-i18n="f5_p">A separate browser with a fresh profile, DevTools on 127.0.0.1 only, tokens kept in .env and masked in every answer.</p></div>
+    <div class="card"><img class="px" data-px="heart" alt=""><h3 data-i18n="f6_t">Self-healing</h3><p data-i18n="f6_p">A crashed or hung browser restarts and reopens the page. Popups, dialogs, overlays, SPAs and input masks just work.</p></div>
   </div>
 </div></section>
 
 <section id="start"><div class="wrap">
-  <h2><img src="assets/icons/capy-rocket.svg" alt=""><span data-i18n="s_title">Quick start</span></h2>
+  <h2><img class="px" data-px="rocket" alt=""><span data-i18n="s_title">Quick start</span></h2>
   <p class="sub" data-i18n="s_sub">Three steps. No accounts, no API keys.</p>
   <div class="steps">
     <div class="step"><h3 data-i18n="s1_t">Install uv</h3>
@@ -134,27 +156,48 @@ curl -LsSf https://astral.sh/uv/install.sh | sh</pre></div>
     }
   }
 }</pre></div>
-    <div class="step"><h3 data-i18n="s3_t">Ask</h3><p class="muted" data-i18n="s3_p" style="color:var(--muted)">Restart the app and ask: “Search the web for the latest Python release and open the official page.”</p>
-      <div class="apps" style="margin-top:14px"><span>Claude Desktop</span><span>Claude Code</span><span>Cursor</span><span>VS Code</span><span>LM Studio</span><span>Codex CLI</span><span>Windsurf</span><span>Ollama</span><span>Open WebUI</span></div></div>
+    <div class="step"><h3 data-i18n="s3_t">Ask</h3><p data-i18n="s3_p">Restart the app and ask: “Search the web for the latest Python release and open the official page.”</p>
+      <div class="apps"><span>Claude Desktop</span><span>Claude Code</span><span>Cursor</span><span>VS Code</span><span>LM Studio</span><span>Codex CLI</span><span>Windsurf</span><span>Ollama</span><span>Open WebUI</span></div></div>
   </div>
 </div></section>
 
 <section id="panel"><div class="wrap">
-  <h2><img src="assets/icons/capy-sliders.svg" alt=""><span data-i18n="p_title">Control panel: capybrowser ui</span></h2>
-  <p class="sub" data-i18n="p_sub">A local, offline web panel. Runs on your computer only, protected by a one-time session key.</p>
-  <div class="shots">
-    <figure><img src="assets/ui-hub.png" alt="Connectors hub" loading="lazy" width="1800" height="1080"><figcaption data-i18n="p1">Connectors with live status, one-click templates, tests and OAuth sign-in.</figcaption></figure>
-    <figure><img src="assets/ui-preview.png" alt="Page preview" loading="lazy" width="1704" height="879"><figcaption data-i18n="p2">See exactly what the model receives for any page — with character and token counts.</figcaption></figure>
+  <h2><img class="px" data-px="sliders" alt=""><span data-i18n="p_title">Control panel: capybrowser ui</span></h2>
+  <p class="sub" data-i18n="p_sub">A local, offline web panel. It runs on your computer only and is protected by a one-time session key.</p>
+  <div class="two">
+    <div class="ui" aria-hidden="true">
+      <div class="head"><img class="px" data-px="orange" alt=""><b>Capy<span>Browser</span></b></div>
+      <div class="tabs"><span class="on">Connectors</span><span>Browser &amp; preview</span><span>Config &amp; secrets</span><span>Connect to chat</span></div>
+      <div class="cards">
+        <div class="uc"><b>mail</b><span class="t">stdio</span><span class="badge" style="color:var(--ok)">connected</span><div class="d">mail and todo list</div><div class="m">7 tools</div><span class="sw"></span><span class="mini">Test &amp; tools</span></div>
+        <div class="uc"><b>github</b><span class="t">http</span><span class="badge" style="color:var(--warn)">missing env</span><div class="d">code, issues, PRs</div><div class="m">GITHUB_TOKEN</div><span class="sw"></span><span class="mini">Test &amp; tools</span></div>
+        <div class="uc"><b>notion</b><span class="t">http</span><span class="badge" style="color:var(--warn)">needs auth</span><div class="d">notes and tasks</div><div class="m">OAuth 2.0 + PKCE</div><span class="sw"></span><span class="mini">Authorize</span></div>
+        <div class="uc"><b>files</b><span class="t">stdio</span><span class="badge" style="color:var(--dim)">disabled</span><div class="d">files and folders</div><div class="m">~/Documents</div><span class="sw off"></span><span class="mini">Edit</span></div>
+      </div>
+    </div>
+    <div>
+<pre class="pv"><span class="c"># what a 4B model receives — 447 chars, ≈113 tokens</span>
+URL: https://shop.example/oranges
+Title: Capy Shop
+--- TEXT ---
+Fresh oranges and warm baths for capybaras.
+Orange box (5 kg) — $12
+--- ELEMENTS (use the [id] with click/type_text) ---
+<span class="el">[1] input "Search products"</span>
+<span class="el">[2] button "Search"</span>
+<span class="el">[3] link "Orange box (5 kg)"</span>
+<span class="el">[4] button "Add to cart"</span></pre>
+      <pre>uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser ui</pre>
+    </div>
   </div>
-  <pre style="margin-top:18px">uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser ui</pre>
 </div></section>
 
 <section id="yaml"><div class="wrap two">
   <div>
-    <h2><img src="assets/icons/capy-orange.svg" alt=""><span>capy.yaml</span></h2>
+    <h2><img class="px" data-px="orange" alt=""><span>capy.yaml</span></h2>
     <p class="sub" data-i18n="y_sub">One file: browser settings and every MCP server you use. Your app starts only CapyBrowser; the model gets 6 browser tools plus list_connectors, find_tools and call_tool. Edits are picked up live.</p>
-    <pre><span class="c"># model sees: find_tools("create an issue")</span>
-<span class="c"># -> github.create_issue(repo: string, title: string, body?: string)</span>
+<pre><span class="c"># find_tools("create an issue") returns:</span>
+<span class="c"># github.create_issue(repo: string, title: string, body?: string)</span>
 call_tool(<span class="s">"github.create_issue"</span>, {<span class="k">"repo"</span>: <span class="s">"me/app"</span>, <span class="k">"title"</span>: <span class="s">"Bug"</span>})</pre>
   </div>
 <pre><span class="k">browser</span>:
@@ -166,7 +209,7 @@ call_tool(<span class="s">"github.create_issue"</span>, {<span class="k">"repo"<
     <span class="k">url</span>: https://api.githubcopilot.com/mcp/
     <span class="k">auth</span>:
       <span class="k">type</span>: bearer
-      <span class="k">token</span>: <span class="tok">${GITHUB_TOKEN}</span>   <span class="c"># from .env</span>
+      <span class="k">token</span>: <span class="s">&#36;{GITHUB_TOKEN}</span>   <span class="c"># from .env</span>
   <span class="k">notion</span>:
     <span class="k">type</span>: streamable-http
     <span class="k">url</span>: https://mcp.notion.com/mcp
@@ -177,7 +220,7 @@ call_tool(<span class="s">"github.create_issue"</span>, {<span class="k">"repo"<
 </div></section>
 
 <section id="faq"><div class="wrap">
-  <h2><img src="assets/icons/capy-question.svg" alt=""><span>FAQ</span></h2>
+  <h2><img class="px" data-px="question" alt=""><span>FAQ</span></h2>
   <details><summary data-i18n="q1">Does it work with local models?</summary><p data-i18n="a1">Yes — that is the main goal. It is tested end-to-end with Qwen 3 4B Instruct in Ollama on CPU: search, multi-page navigation, logins, forms, scrolling, errors.</p></details>
   <details><summary data-i18n="q2">Will it touch my normal browser profile?</summary><p data-i18n="a2">No. It starts a separate browser with a temporary profile that is deleted on exit. Set profile_dir only if you want the agent's own logins to persist.</p></details>
   <details><summary data-i18n="q3">Which browsers are supported?</summary><p data-i18n="a3">Google Chrome, Microsoft Edge, Brave, Chromium and Vivaldi on Windows, macOS and Linux. Firefox and Safari are not supported (CapyBrowser speaks the Chrome DevTools Protocol).</p></details>
@@ -185,15 +228,41 @@ call_tool(<span class="s">"github.create_issue"</span>, {<span class="k">"repo"<
   <details><summary data-i18n="q5">Is it free?</summary><p data-i18n="a5">Yes, MIT licensed and open source.</p></details>
 </div></section>
 
-<footer>
-  <div class="wrap">
-    <img src="assets/icons/capy.svg" alt="" width="64" style="image-rendering:pixelated"><br>
-    <span data-i18n="foot">Made by</span> <a href="https://github.com/capyriver">CapyRiver</a> · <a href="https://t.me/CapyRiver">Telegram</a> · <a href="https://capyriver.pages.dev/">Website</a> · MIT
-  </div>
-  <img class="wave" src="assets/footer.svg" alt="">
-</footer>
+<footer><div class="wrap">
+  <img class="px" data-px="globe" alt=""><br>
+  <span data-i18n="foot">Made by</span> <a href="https://github.com/capyriver">CapyRiver</a> · <a href="https://t.me/CapyRiver">Telegram</a> · <a href="https://capyriver.pages.dev/">Website</a> · MIT
+</div></footer>
 
 <script>
+const PX = {"pal":{"B":"#2a1810","F":"#9a6440","L":"#c08a5e","D":"#6b4129","E":"#140b07","N":"#1d120c","W":"#ffffff","K":"#2a1810","A":"#d9824f","C":"#fff3e6","T":"#2f9e92","Y":"#f2b84b","R":"#e0574a","G":"#5cb85c","O":"#f7d9bf"},
+"head":"...............BBB.BBB....|..............BLFBBLFB....|.......BBBBBBBBFFFFFFFBB..|.....BBFFFFFFFFFFFFFFFFFB.|...BBFFFFFFFFFFFFFFFFFFFFB|..BFFFLLLFFFFFFFFFFEEFFFFB|.BFFFLLLLFFFFFFFFFFEWFFFFB|.BFFFFFFFFFFFFFFFFFFFFFFFB|BFFFFFFFFFFFFFFFFFFFFFFDDB|BFFFFFFFFFFFFFFFFFFFFFDDDB|BFFFFFFFFFFFFFFFFFFFFDDNNB|BFFFFFFFFFFFFFFFFFFFFDDDDB|.BFFFFFFFFFFFFFFFFFFFBDDB.|..BFFBBBFFFFFFFFBBFFFBBB..|..BFB..BFB....BFB.BFB.....|..BB....BB....BB...BB.....",
+"acc":{"orange":"....GG....|...GGK....|..KKKKKK..|.KYAAAAYK.|KAAOAAAAAK|KAOAAAAAAK|KAAAAAAAAK|KAAAAAAAYK|.KAAAAAYK.|..KKKKKK..",
+"rocket":".......KK.|......KCCK|.....KCCAK|....KCTCK.|.KKKCCCK..|.KAACCK...|..KACKA...|.KYKKAK...|KYYK.K....|.KK.......",
+"plug":"..K...K...|..K...K...|.KKKKKKK..|.KAAAAAK..|.KAOAAAK..|.KAAAAAK..|..KAAAK...|...KAK....|....K.....|....K.....",
+"shield":".KKKKKKKK.|KTTTTTTTTK|KTTTTTTCTK|KTTTTTCCTK|KTCTTCCTTK|KTCCCCTTTK|.KTCCTTTK.|.KTTTTTTK.|..KTTTTK..|...KKKK...",
+"sliders":"..........|.K........|KAK.KKKKKK|.K........|.....K....|KKKKKAKKK.|.....K....|..K.......|KKKTKKKKKK|..K.......",
+"window":"KKKKKKKKKK|KRYGKKKKKK|KCCCCCCCCK|KCAAACCCCK|KCCCCCCCCK|KCAAAAACCK|KCCCCCCCCK|KCAACCCCCK|KKKKKKKKKK|..........",
+"bolt":".....KKK..|....KYYK..|...KYYK...|..KYYKKK..|.KYYYYYK..|.KKKYYK...|...KYK....|..KYK.....|..KK......|..........",
+"heart":"..........|.KK...KK..|KRRK.KRRK.|KRWRKRRRK.|KRRRRRRRK.|.KRRRRRK..|..KRRRK...|...KRK....|....K.....|..........",
+"question":".KKKKKKKK.|KCCAAACCCK|KCACCCACCK|KCCCCCACCK|KCCCCACCCK|KCCCACCCCK|KCCCCCCCCK|KCCCACCCCK|.KKKKKKKK.|...KK.....",
+"globe":"...KKKK...|..KTGGTK..|.KTTGGTTK.|KTGGTTGGTK|KGGTTTTGTK|KTTTTGGTTK|KTGTTGGGTK|.KTGGTTTK.|..KTTTTK..|...KKKK..."}};
+function pixel(name) {
+  const grid = {};
+  const draw = (art, ox, oy) => art.split("|").forEach((row, y) => [...row].forEach((ch, x) => { if (PX.pal[ch]) grid[(ox + x) + "," + (oy + y)] = PX.pal[ch]; }));
+  draw(PX.head, 1, 12);
+  if (PX.acc[name]) draw(PX.acc[name], 6, 6);
+  let rects = "";
+  for (let y = 0; y < 28; y++) for (let x = 0; x < 28; x++) {
+    const c = grid[x + "," + y]; if (!c) continue;
+    let w = 1; while (grid[(x + w) + "," + y] === c) w++;
+    rects += '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="1" fill="' + c + '"/>'; x += w - 1;
+  }
+  return "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" shape-rendering="crispEdges">' + rects + "</svg>");
+}
+const cachePx = {};
+document.querySelectorAll("img[data-px]").forEach(img => { const n = img.dataset.px; img.src = cachePx[n] || (cachePx[n] = pixel(n)); });
+const fav = document.createElement("link"); fav.rel = "icon"; fav.href = pixel("orange"); document.head.append(fav);
+
 const RU = {nav_features:"Возможности",nav_start:"Быстрый старт",nav_panel:"Панель",copy:"Копировать",copied:"Скопировано",
 hero_title:"Дайте <em>любой LLM</em> настоящий браузер",
 hero_lead:"MCP-сервер в одном файле, который управляет вашим Chrome, Edge, Brave или Chromium. Сделан для маленьких локальных моделей — даже 4B-модель на ноутбуке ищет, читает, кликает и заполняет формы.",
@@ -202,35 +271,34 @@ f1_t:"Для маленьких моделей",f1_p:"Каждая страни�
 f2_t:"Установка одной ссылкой",f2_p:"uvx всё скачает сам при первом запуске. Windows, macOS и Linux, Chrome, Edge, Brave или Chromium.",
 f3_t:"Все ваши MCP-серверы",f3_p:"GitHub, Notion, файлы, базы данных или любой MCP-сервер в capy.yaml — модель обращается к ним через три компактных инструмента-роутера.",
 f4_t:"Панель управления",f4_p:"capybrowser ui: коннекторы из шаблонов, проверка инструментов, секреты и просмотр того, что видит модель.",
-f5_t:"Безопасно по умолчанию",f5_p:"Отдельный браузер с чистым профилем, DevTools только на 127.0.0.1, токены через ${VAR} и маскируются в ответах.",
+f5_t:"Безопасно по умолчанию",f5_p:"Отдельный браузер с чистым профилем, DevTools только на 127.0.0.1, токены хранятся в .env и маскируются в ответах.",
 f6_t:"Самовосстановление",f6_p:"Упавший или зависший браузер перезапускается и открывает страницу заново. Всплывающие окна, диалоги, SPA и маски ввода работают.",
 s_title:"Быстрый старт",s_sub:"Три шага. Без аккаунтов и API-ключей.",s1_t:"Установите uv",s2_t:"Добавьте в AI-приложение",s3_t:"Спросите",
 s3_p:"Перезапустите приложение и попросите: «Найди последнюю версию Python и открой официальную страницу».",
 p_title:"Панель управления: capybrowser ui",p_sub:"Локальная офлайн веб-панель. Работает только на вашем компьютере и защищена одноразовым ключом сессии.",
-p1:"Коннекторы с живым статусом, шаблоны в один клик, тесты и вход через OAuth.",p2:"Ровно то, что получит модель, для любой страницы — со счётчиком символов и токенов.",
 y_sub:"Один файл: настройки браузера и все ваши MCP-серверы. Приложение запускает только CapyBrowser, модель получает 6 инструментов браузера плюс list_connectors, find_tools и call_tool. Правки подхватываются на лету.",
 q1:"Работает с локальными моделями?",a1:"Да, это главная цель. Проверено с Qwen 3 4B Instruct в Ollama на процессоре: поиск, переходы, вход в аккаунт, формы, листание, ошибки.",
 q2:"Он не тронет мой обычный профиль браузера?",a2:"Нет. Запускается отдельный браузер с временным профилем, который удаляется при выходе. profile_dir нужен, только если хотите сохранять входы агента.",
 q3:"Какие браузеры поддерживаются?",a3:"Google Chrome, Microsoft Edge, Brave, Chromium и Vivaldi на Windows, macOS и Linux. Firefox и Safari не поддерживаются.",
 q4:"Он куда-то отправляет мои данные?",a4:"Только на сайты, которые открывает модель, и в DuckDuckGo/Bing для web_search. Без телеметрии, аккаунтов и API-ключей.",
 q5:"Это бесплатно?",a5:"Да, открытый код под лицензией MIT.",foot:"Сделано"};
-const EN = {};
-document.querySelectorAll("[data-i18n]").forEach(n => EN[n.dataset.i18n] = n.textContent);
+const EN = {copy: "Copy", copied: "Copied"};
+document.querySelectorAll("[data-i18n]").forEach(n => { if (!EN[n.dataset.i18n]) EN[n.dataset.i18n] = n.textContent; });
 document.querySelectorAll("[data-i18n-html]").forEach(n => EN[n.dataset.i18nHtml] = n.innerHTML);
-EN.copy = "Copy"; EN.copied = "Copied";
-let lang = (() => { try { return localStorage.getItem("capy_site_lang") || ((navigator.language || "").startsWith("ru") ? "ru" : "en") } catch (e) { return "en" } })();
+let lang = "en";
+try { lang = localStorage.getItem("capy_site_lang") || ((navigator.language || "").startsWith("ru") ? "ru" : "en"); } catch (e) {}
 function apply() {
   const d = lang === "ru" ? RU : EN;
   document.documentElement.lang = lang;
-  document.querySelectorAll("[data-i18n]").forEach(n => { if (d[n.dataset.i18n]) n.textContent = d[n.dataset.i18n] });
-  document.querySelectorAll("[data-i18n-html]").forEach(n => { if (d[n.dataset.i18nHtml]) n.innerHTML = d[n.dataset.i18nHtml] });  // static strings only
+  document.querySelectorAll("[data-i18n]").forEach(n => { if (d[n.dataset.i18n]) n.textContent = d[n.dataset.i18n]; });
+  document.querySelectorAll("[data-i18n-html]").forEach(n => { if (d[n.dataset.i18nHtml]) n.innerHTML = d[n.dataset.i18nHtml]; });
   document.querySelectorAll(".lang button").forEach(b => b.classList.toggle("on", b.dataset.lang === lang));
 }
-document.querySelectorAll(".lang button").forEach(b => b.addEventListener("click", () => { lang = b.dataset.lang; try { localStorage.setItem("capy_site_lang", lang) } catch (e) {} apply() }));
+document.querySelectorAll(".lang button").forEach(b => b.addEventListener("click", () => { lang = b.dataset.lang; try { localStorage.setItem("capy_site_lang", lang); } catch (e) {} apply(); }));
 document.getElementById("copy").addEventListener("click", async e => {
   const t = document.getElementById("cmd").textContent;
-  try { await navigator.clipboard.writeText(t) } catch (err) { const a = document.createElement("textarea"); a.value = t; document.body.append(a); a.select(); document.execCommand("copy"); a.remove() }
-  e.target.textContent = (lang === "ru" ? RU : EN).copied; setTimeout(() => e.target.textContent = (lang === "ru" ? RU : EN).copy, 1500);
+  try { await navigator.clipboard.writeText(t); } catch (err) { const a = document.createElement("textarea"); a.value = t; document.body.append(a); a.select(); document.execCommand("copy"); a.remove(); }
+  const d = lang === "ru" ? RU : EN; e.target.textContent = d.copied; setTimeout(() => { e.target.textContent = d.copy; }, 1500);
 });
 apply();
 </script>
