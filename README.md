@@ -317,7 +317,7 @@ Yes, that is the main goal. It is tested end-to-end with **Qwen 3 4B Instruct** 
 <details>
 <summary><b>Do I need to install Python, Node.js or Playwright?</b></summary>
 
-No Node.js and no Playwright. `uv` downloads a suitable Python and the two Python dependencies automatically on the first run. You only need `uv` and a Chromium-based browser.
+No Node.js and no Playwright. `uv` downloads a suitable Python and its small Python dependencies automatically on the first run. You only need `uv` and a Chromium-based browser.
 </details>
 
 <details>
@@ -589,7 +589,7 @@ uv run https://raw.githubusercontent.com/capyriver/CapyBrowser/main/browser_mcp.
 <details>
 <summary><b>需要安装 Python、Node.js 或 Playwright 吗？</b></summary>
 
-不需要 Node.js 和 Playwright。`uv` 会在首次运行时自动下载合适的 Python 和两个依赖。你只需要 `uv` 和一个基于 Chromium 的浏览器。
+不需要 Node.js 和 Playwright。`uv` 会在首次运行时自动下载合适的 Python 和所需依赖。你只需要 `uv` 和一个基于 Chromium 的浏览器。
 </details>
 
 <details>
@@ -922,7 +922,7 @@ uv run browser_mcp.py
 <details>
 <summary><b>Нужно ставить Python, Node.js или Playwright?</b></summary>
 
-Node.js и Playwright не нужны. `uv` при первом запуске сам скачает подходящий Python и две Python-зависимости. Нужны только `uv` и браузер на основе Chromium.
+Node.js и Playwright не нужны. `uv` при первом запуске сам скачает подходящий Python и нужные Python-зависимости. Нужны только `uv` и браузер на основе Chromium.
 </details>
 
 <details>
@@ -1183,7 +1183,7 @@ uv run https://raw.githubusercontent.com/capyriver/CapyBrowser/main/browser_mcp.
 <details>
 <summary><b>Python, Node.js немесе Playwright орнату керек пе?</b></summary>
 
-Node.js пен Playwright керек емес. `uv` алғашқы іске қосуда лайықты Python-ды және екі тәуелділікті өзі жүктейді. Тек `uv` және Chromium негізіндегі браузер қажет.
+Node.js пен Playwright керек емес. `uv` алғашқы іске қосуда лайықты Python-ды және қажетті тәуелділіктерді өзі жүктейді. Тек `uv` және Chromium негізіндегі браузер қажет.
 </details>
 
 <details>
