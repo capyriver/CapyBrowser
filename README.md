@@ -95,6 +95,18 @@ The model answers with `type_text(3, "admin")`, `click(5)` — and a real browse
 
 ### <img src="assets/icons/capy-rocket.svg" width="40" height="40" alt="" align="absmiddle" /> Quick start
 
+**Fastest: one line** (installs uv if needed, then the `capybrowser` command):
+
+```sh
+curl -fsSL capybrowser.pages.dev | sh      # macOS / Linux
+```
+
+```powershell
+irm capybrowser.pages.dev | iex             # Windows
+```
+
+Or step by step:
+
 **1. Install `uv`** (a fast Python package manager; it also installs Python for you):
 
 ```powershell
@@ -548,6 +560,18 @@ Password
 
 ### <img src="assets/icons/capy-rocket.svg" width="40" height="40" alt="" align="absmiddle" /> 快速开始
 
+**最快：一行命令**（如需要会先安装 uv，然后安装 `capybrowser` 命令）：
+
+```sh
+curl -fsSL capybrowser.pages.dev | sh      # macOS / Linux
+```
+
+```powershell
+irm capybrowser.pages.dev | iex             # Windows
+```
+
+或者逐步安装：
+
 **1. 安装 `uv`**（快速的 Python 包管理器，也会自动为你安装 Python）：
 
 ```powershell
@@ -865,6 +889,18 @@ Password
 - **Безопасные настройки по умолчанию:** DevTools слушает только `127.0.0.1`; ссылки `file://`, `javascript:` и `chrome://` запрещены (`file://` можно включить явно).
 
 ### <img src="assets/icons/capy-rocket.svg" width="40" height="40" alt="" align="absmiddle" /> Быстрый старт
+
+**Быстрее всего — одна строка** (поставит uv, если его нет, и команду `capybrowser`):
+
+```sh
+curl -fsSL capybrowser.pages.dev | sh      # macOS / Linux
+```
+
+```powershell
+irm capybrowser.pages.dev | iex             # Windows
+```
+
+Или по шагам:
 
 **1. Установите `uv`** (быстрый менеджер пакетов Python; он сам поставит и Python):
 
@@ -1297,6 +1333,18 @@ Password
 - **Қауіпсіз әдепкі баптаулар:** DevTools тек `127.0.0.1` мекенжайын тыңдайды; `file://`, `javascript:` және `chrome://` сілтемелеріне тыйым салынған (`file://` анық түрде қосуға болады).
 
 ### <img src="assets/icons/capy-rocket.svg" width="40" height="40" alt="" align="absmiddle" /> Жылдам бастау
+
+**Ең жылдамы — бір жол** (қажет болса uv, содан кейін `capybrowser` командасын орнатады):
+
+```sh
+curl -fsSL capybrowser.pages.dev | sh      # macOS / Linux
+```
+
+```powershell
+irm capybrowser.pages.dev | iex             # Windows
+```
+
+Немесе қадам бойынша:
 
 **1. `uv` орнатыңыз** (Python үшін жылдам пакет менеджері; Python-ды да өзі орнатады):
 
