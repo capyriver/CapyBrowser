@@ -3415,6 +3415,13 @@ PRESETS: list[dict] = [
                 {"key": "token_var", "label": "Token variable", "default": "GITHUB_TOKEN"}]},
     {"id": "notion", "title": "Notion", "kind": "http", "hint": "Notion pages and databases (OAuth sign-in).",
      "fields": [{"key": "name", "label": "Name", "default": "notion"}]},
+    {"id": "cloudflare", "title": "Cloudflare", "kind": "http",
+     "hint": "Official Cloudflare MCP: Workers, Pages, DNS, R2, D1, KV… (OAuth sign-in).",
+     "fields": [{"key": "name", "label": "Name", "default": "cloudflare"}]},
+    {"id": "linear", "title": "Linear", "kind": "http", "hint": "Linear issues and projects (OAuth sign-in).",
+     "fields": [{"key": "name", "label": "Name", "default": "linear"}]},
+    {"id": "sentry", "title": "Sentry", "kind": "http", "hint": "Sentry errors and issues (OAuth sign-in).",
+     "fields": [{"key": "name", "label": "Name", "default": "sentry"}]},
     {"id": "filesystem", "title": "Filesystem", "kind": "stdio", "hint": "Read and write files in one folder (needs Node.js).",
      "fields": [{"key": "name", "label": "Name", "default": "files"},
                 {"key": "folder", "label": "Folder", "default": "", "placeholder": "/path/to/folder"}]},
@@ -3438,6 +3445,13 @@ PRESETS: list[dict] = [
                 {"key": "token_var", "label": "Token variable (bearer)", "default": "MCP_TOKEN"},
                 {"key": "description", "label": "Description (helps find_tools)", "default": ""}]},
 ]
+
+
+OAUTH_REMOTES: dict[str, tuple[str, str]] = {
+    "cloudflare": ("https://mcp.cloudflare.com/mcp", "Cloudflare: Workers, Pages, DNS, domains, R2, D1, KV, account API"),
+    "linear": ("https://mcp.linear.app/mcp", "Linear: issues, projects, tasks"),
+    "sentry": ("https://mcp.sentry.dev/mcp", "Sentry: errors, issues, releases"),
+}
 
 
 def preset_spec(preset_id: str, f: dict) -> tuple[str, dict]:
@@ -3477,6 +3491,9 @@ def preset_spec(preset_id: str, f: dict) -> tuple[str, dict]:
     elif preset_id == "notion":
         spec = {"type": "streamable-http", "url": "https://mcp.notion.com/mcp", "description": "Notion: pages, notes, tasks, databases",
                 "auth": {"type": "oauth"}}
+    elif preset_id in OAUTH_REMOTES:
+        url, desc = OAUTH_REMOTES[preset_id]
+        spec = {"type": "streamable-http", "url": url, "description": desc, "auth": {"type": "oauth"}}
     elif preset_id == "filesystem":
         folder = val("folder")
         if not folder:

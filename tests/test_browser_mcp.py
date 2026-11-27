@@ -825,16 +825,19 @@ def test_presets_produce_valid_config(tmp_path):
     cf = bm.CapyFile(str(tmp_path / "capy.yaml"))
     (tmp_path / "capy.yaml").write_text(bm.CAPY_YAML_TEMPLATE, encoding="utf-8")
     fields = {"remote": {"name": "zap", "url": "https://mcp.zapier.example/mcp", "auth": "bearer", "token_var": "ZAP"},
-              "github": {}, "notion": {}, "filesystem": {"folder": str(tmp_path)}, "postgres": {},
+              "github": {}, "notion": {}, "cloudflare": {}, "linear": {}, "sentry": {}, "filesystem": {"folder": str(tmp_path)}, "postgres": {},
               "sqlite": {"db": str(tmp_path / "x.db")}, "stdio": {"command": "uvx", "args": "mcp-server-time\n--local-timezone\nUTC"},
               "http": {"name": "h", "url": "http://127.0.0.1:9/mcp", "transport": "sse"}}
     for p in bm.PRESETS:
         name, spec = bm.preset_spec(p["id"], fields[p["id"]])
         cf.set_server(name, spec, must_exist=False)
     cfg = bm.load_config(cf.path)
-    assert set(cfg["mcp_servers"]) == {"zap", "github", "notion", "files", "postgres", "sqlite", "local", "h"}
+    assert set(cfg["mcp_servers"]) == {"zap", "github", "notion", "cloudflare", "linear", "sentry", "files", "postgres", "sqlite", "local", "h"}
     assert cfg["mcp_servers"]["h"]["type"] == "sse" and cfg["mcp_servers"]["local"]["args"] == ["mcp-server-time", "--local-timezone", "UTC"]
     assert cfg["mcp_servers"]["zap"]["auth"]["type"] == "bearer" and cfg["mcp_servers"]["notion"]["auth"]["type"] == "oauth"
+    assert bm.preset_spec("cloudflare", {}) == ("cloudflare", {"type": "streamable-http", "url": "https://mcp.cloudflare.com/mcp",
+                                                               "description": bm.OAUTH_REMOTES["cloudflare"][1], "auth": {"type": "oauth"}})
+    assert cfg["mcp_servers"]["cloudflare"]["auth"]["type"] == "oauth"
     with pytest.raises(ValueError):
         bm.preset_spec("filesystem", {"folder": ""})
     with pytest.raises(ValueError):
@@ -944,7 +947,7 @@ def test_ui_crud_env_config_preview(base, tmp_path):
         st = ui.api("GET", "/api/state")
         assert st["version"] == bm.__version__ and st["config_path"] == str(cfg)
         assert [c["name"] for c in st["connectors"]] == ["mail"] and st["connectors"][0]["status"] == "ready"
-        assert st["browser"]["lang"] == "de-DE" and len(st["presets"]) == 8
+        assert st["browser"]["lang"] == "de-DE" and len(st["presets"]) == 11
         # add GitHub (bearer ${GITHUB_TOKEN}) -> missing_env until the secret is set
         ui.api("POST", "/api/connectors", {"preset": "github", "fields": {"name": "github", "auth": "bearer", "token_var": "GH_PANEL_TOKEN"}})
         ui.api("POST", "/api/connectors", {"preset": "github", "fields": {"name": "github"}}, expect=400)  # duplicate
