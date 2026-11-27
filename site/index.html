@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CapyBrowser — give any LLM a real browser</title>
+<meta name="description" content="A single-file MCP server that drives your system Chrome / Edge / Brave / Chromium over CDP. Built for small local models. One link to install.">
+<meta property="og:title" content="CapyBrowser — give any LLM a real browser">
+<meta property="og:description" content="Single-file MCP server for Chrome / Edge / Brave / Chromium. Works with 4B local models. Connectors, control panel, one capy.yaml.">
+<meta property="og:image" content="https://capybrowser.pages.dev/assets/social-preview.png">
+<meta property="og:url" content="https://capybrowser.pages.dev/">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="assets/icons/capy-orange.svg" type="image/svg+xml">
+<style>
+:root{--bg:#120d0a;--panel:#1c1511;--panel2:#241b16;--line:#3a2b22;--text:#f3e7dc;--muted:#b49b89;--dim:#8a7464;--accent:#d9824f;--accent2:#f2b84b;
+--mono:ui-monospace,"JetBrains Mono","Cascadia Code",Consolas,Menlo,monospace}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+a{color:var(--accent2)}
+img{max-width:100%;height:auto}
+.wrap{max-width:1120px;margin:0 auto;padding:0 20px}
+nav.top{position:sticky;top:0;z-index:10;background:#120d0aee;backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+nav.top .wrap{display:flex;align-items:center;gap:14px;height:60px}
+nav.top .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:18px;color:var(--text);text-decoration:none}
+nav.top .brand img{width:34px;image-rendering:pixelated}
+nav.top .brand span{color:var(--accent)}
+nav.top .links{display:flex;gap:18px;margin-left:auto;align-items:center}
+nav.top .links a{color:var(--muted);text-decoration:none;font-weight:600;font-size:15px}
+nav.top .links a:hover{color:var(--text)}
+.lang{display:flex;gap:4px}
+.lang button{background:none;border:1px solid var(--line);color:var(--muted);padding:3px 9px;border-radius:999px;cursor:pointer;font:inherit;font-size:13px}
+.lang button.on{background:var(--accent);border-color:var(--accent);color:#1b120d;font-weight:700}
+@media(max-width:760px){nav.top .links a.hide-m{display:none}nav.top .links{gap:10px}nav.top .wrap{gap:8px}}
+.step pre{white-space:pre-wrap;word-break:break-all}
+header.hero{padding:48px 0 30px;text-align:center}
+header.hero .banner{border-radius:18px;border:1px solid var(--line);box-shadow:0 20px 60px #0008}
+header.hero h1{font-size:clamp(28px,4.6vw,46px);line-height:1.15;margin:34px 0 12px}
+header.hero h1 em{font-style:normal;color:var(--accent)}
+header.hero p.lead{color:var(--muted);font-size:clamp(16px,2vw,19px);max-width:760px;margin:0 auto 26px}
+.cmd{display:flex;align-items:center;gap:10px;max-width:780px;margin:0 auto;background:#0d0907;border:1px solid var(--accent);border-radius:14px;padding:12px 12px 12px 18px;text-align:left}
+.cmd code{flex:1;font-family:var(--mono);font-size:14px;color:#ffd9c2;overflow-x:auto;white-space:nowrap}
+.btn{display:inline-flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:9px 16px;border-radius:11px;cursor:pointer;text-decoration:none;font:inherit;font-weight:600;white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#1b120d}
+.ctas{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:22px}
+section{padding:54px 0;border-top:1px solid #2a1f19}
+section h2{font-size:clamp(24px,3vw,32px);margin:0 0 8px;display:flex;align-items:center;gap:12px}
+section h2 img{width:46px;image-rendering:pixelated}
+section p.sub{color:var(--muted);margin:0 0 28px;max-width:800px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px}
+.card h3{margin:6px 0 6px;font-size:17px}
+.card p{margin:0;color:var(--muted);font-size:15px}
+.card img.ic{width:52px;image-rendering:pixelated}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;counter-reset:s}
+.step{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;position:relative}
+.step:before{counter-increment:s;content:counter(s);position:absolute;top:-14px;left:18px;background:var(--accent);color:#1b120d;font-weight:800;width:30px;height:30px;border-radius:50%;display:grid;place-items:center}
+.step h3{margin:8px 0 8px;font-size:17px}
+pre{background:#0d0907;border:1px solid var(--line);border-radius:12px;padding:14px;overflow-x:auto;font-family:var(--mono);font-size:13px;line-height:1.55;margin:10px 0 0;color:#f3e7dc}
+pre .c{color:#8a7464}pre .k{color:#f2b84b}pre .s{color:#ffd9c2}
+.shots{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.shots figure{margin:0;background:var(--panel);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.shots figcaption{padding:12px 16px;color:var(--muted);font-size:14px}
+@media(max-width:820px){.shots{grid-template-columns:1fr}}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start}
+@media(max-width:820px){.two{grid-template-columns:1fr}}
+.two>*,.steps>*,.grid>*,.cmd code{min-width:0}pre{max-width:100%}
+.apps{display:flex;flex-wrap:wrap;gap:10px}
+.apps span{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:6px 14px;font-size:14px}
+details{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 18px;margin-bottom:10px}
+details summary{cursor:pointer;font-weight:700}
+details p{color:var(--muted);margin:10px 0 0}
+footer{padding:40px 0 10px;text-align:center;color:var(--dim);font-size:14px}
+footer img.wave{display:block;width:100%;height:90px;margin-top:20px}
+.tok{color:var(--accent2)}
+</style>
+</head>
+<body>
+<nav class="top"><div class="wrap">
+  <a class="brand" href="#"><img src="assets/icons/capy-orange.svg" alt=""><b>Capy<span>Browser</span></b></a>
+  <div class="links">
+    <a href="#features" class="hide-m" data-i18n="nav_features">Features</a>
+    <a href="#start" class="hide-m" data-i18n="nav_start">Quick start</a>
+    <a href="#panel" class="hide-m" data-i18n="nav_panel">Panel</a>
+    <a href="#faq" class="hide-m">FAQ</a>
+    <a href="https://github.com/capyriver/CapyBrowser">GitHub</a>
+    <div class="lang"><button data-lang="en">EN</button><button data-lang="ru">RU</button></div>
+  </div>
+</div></nav>
+
+<header class="hero"><div class="wrap">
+  <img class="banner" src="assets/banner.svg" alt="CapyBrowser — give any LLM a real browser" width="1280" height="400">
+  <h1 data-i18n-html="hero_title">Give <em>any LLM</em> a real browser</h1>
+  <p class="lead" data-i18n="hero_lead">A single-file MCP server that drives the Chrome, Edge, Brave or Chromium you already have. Built for small local models — even a 4B model on a laptop can search, read, click and fill forms.</p>
+  <div class="cmd"><code id="cmd">uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser</code>
+    <button class="btn primary" id="copy" data-i18n="copy">Copy</button></div>
+  <div class="ctas">
+    <a class="btn primary" href="#start" data-i18n="cta_start">Get started</a>
+    <a class="btn" href="https://github.com/capyriver/CapyBrowser" data-i18n="cta_github">View on GitHub</a>
+  </div>
+</div></header>
+
+<section id="features"><div class="wrap">
+  <h2><img src="assets/icons/capy-bolt.svg" alt=""><span data-i18n="f_title">Why CapyBrowser</span></h2>
+  <p class="sub" data-i18n="f_sub">No Playwright, no Selenium, no Node — one Python file and the browser you already have.</p>
+  <div class="grid">
+    <div class="card"><img class="ic" src="assets/icons/capy-window.svg" alt=""><h3 data-i18n="f1_t">Made for small models</h3><p data-i18n="f1_p">Every page becomes a short view: visible text plus numbered [id] elements, capped at ~3,500 characters.</p></div>
+    <div class="card"><img class="ic" src="assets/icons/capy-rocket.svg" alt=""><h3 data-i18n="f2_t">One link to install</h3><p data-i18n="f2_p">uvx downloads everything on first run. Works on Windows, macOS and Linux with Chrome, Edge, Brave or Chromium.</p></div>
+    <div class="card"><img class="ic" src="assets/icons/capy-plug.svg" alt=""><h3 data-i18n="f3_t">All your MCP servers</h3><p data-i18n="f3_p">Add GitHub, Notion, files, databases or any MCP server in capy.yaml — the model reaches them through three compact router tools.</p></div>
+    <div class="card"><img class="ic" src="assets/icons/capy-sliders.svg" alt=""><h3 data-i18n="f4_t">Control panel</h3><p data-i18n="f4_p">capybrowser ui: add connectors from templates, test tools, manage secrets and see exactly what the model sees.</p></div>
+    <div class="card"><img class="ic" src="assets/icons/capy-shield.svg" alt=""><h3 data-i18n="f5_t">Safe by default</h3><p data-i18n="f5_p">Separate browser with a fresh profile, DevTools on 127.0.0.1 only, tokens via ${VAR} and masked in every answer.</p></div>
+    <div class="card"><img class="ic" src="assets/icons/capy-heart.svg" alt=""><h3 data-i18n="f6_t">Self-healing</h3><p data-i18n="f6_p">Crashed or hung browser restarts and reopens the page. Popups, dialogs, overlays, SPAs and input masks just work.</p></div>
+  </div>
+</div></section>
+
+<section id="start"><div class="wrap">
+  <h2><img src="assets/icons/capy-rocket.svg" alt=""><span data-i18n="s_title">Quick start</span></h2>
+  <p class="sub" data-i18n="s_sub">Three steps. No accounts, no API keys.</p>
+  <div class="steps">
+    <div class="step"><h3 data-i18n="s1_t">Install uv</h3>
+<pre><span class="c"># Windows (PowerShell)</span>
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+<span class="c"># macOS / Linux</span>
+curl -LsSf https://astral.sh/uv/install.sh | sh</pre></div>
+    <div class="step"><h3 data-i18n="s2_t">Add it to your AI app</h3>
+<pre>{
+  <span class="k">"mcpServers"</span>: {
+    <span class="k">"capybrowser"</span>: {
+      <span class="k">"command"</span>: <span class="s">"uvx"</span>,
+      <span class="k">"args"</span>: [<span class="s">"--from"</span>,
+        <span class="s">"git+https://github.com/capyriver/CapyBrowser"</span>,
+        <span class="s">"capybrowser"</span>]
+    }
+  }
+}</pre></div>
+    <div class="step"><h3 data-i18n="s3_t">Ask</h3><p class="muted" data-i18n="s3_p" style="color:var(--muted)">Restart the app and ask: “Search the web for the latest Python release and open the official page.”</p>
+      <div class="apps" style="margin-top:14px"><span>Claude Desktop</span><span>Claude Code</span><span>Cursor</span><span>VS Code</span><span>LM Studio</span><span>Codex CLI</span><span>Windsurf</span><span>Ollama</span><span>Open WebUI</span></div></div>
+  </div>
+</div></section>
+
+<section id="panel"><div class="wrap">
+  <h2><img src="assets/icons/capy-sliders.svg" alt=""><span data-i18n="p_title">Control panel: capybrowser ui</span></h2>
+  <p class="sub" data-i18n="p_sub">A local, offline web panel. Runs on your computer only, protected by a one-time session key.</p>
+  <div class="shots">
+    <figure><img src="assets/ui-hub.png" alt="Connectors hub" loading="lazy" width="1800" height="1080"><figcaption data-i18n="p1">Connectors with live status, one-click templates, tests and OAuth sign-in.</figcaption></figure>
+    <figure><img src="assets/ui-preview.png" alt="Page preview" loading="lazy" width="1704" height="879"><figcaption data-i18n="p2">See exactly what the model receives for any page — with character and token counts.</figcaption></figure>
+  </div>
+  <pre style="margin-top:18px">uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser ui</pre>
+</div></section>
+
+<section id="yaml"><div class="wrap two">
+  <div>
+    <h2><img src="assets/icons/capy-orange.svg" alt=""><span>capy.yaml</span></h2>
+    <p class="sub" data-i18n="y_sub">One file: browser settings and every MCP server you use. Your app starts only CapyBrowser; the model gets 6 browser tools plus list_connectors, find_tools and call_tool. Edits are picked up live.</p>
+    <pre><span class="c"># model sees: find_tools("create an issue")</span>
+<span class="c"># -> github.create_issue(repo: string, title: string, body?: string)</span>
+call_tool(<span class="s">"github.create_issue"</span>, {<span class="k">"repo"</span>: <span class="s">"me/app"</span>, <span class="k">"title"</span>: <span class="s">"Bug"</span>})</pre>
+  </div>
+<pre><span class="k">browser</span>:
+  <span class="k">lang</span>: ru-RU
+  <span class="k">max_chars</span>: 3500        <span class="c"># good for 4B models</span>
+<span class="k">mcp_servers</span>:
+  <span class="k">github</span>:
+    <span class="k">type</span>: streamable-http
+    <span class="k">url</span>: https://api.githubcopilot.com/mcp/
+    <span class="k">auth</span>:
+      <span class="k">type</span>: bearer
+      <span class="k">token</span>: <span class="tok">${GITHUB_TOKEN}</span>   <span class="c"># from .env</span>
+  <span class="k">notion</span>:
+    <span class="k">type</span>: streamable-http
+    <span class="k">url</span>: https://mcp.notion.com/mcp
+    <span class="k">auth</span>: {<span class="k">type</span>: oauth}
+  <span class="k">files</span>:
+    <span class="k">command</span>: npx
+    <span class="k">args</span>: [<span class="s">"-y"</span>, <span class="s">"@modelcontextprotocol/server-filesystem"</span>, <span class="s">"~/Documents"</span>]</pre>
+</div></section>
+
+<section id="faq"><div class="wrap">
+  <h2><img src="assets/icons/capy-question.svg" alt=""><span>FAQ</span></h2>
+  <details><summary data-i18n="q1">Does it work with local models?</summary><p data-i18n="a1">Yes — that is the main goal. It is tested end-to-end with Qwen 3 4B Instruct in Ollama on CPU: search, multi-page navigation, logins, forms, scrolling, errors.</p></details>
+  <details><summary data-i18n="q2">Will it touch my normal browser profile?</summary><p data-i18n="a2">No. It starts a separate browser with a temporary profile that is deleted on exit. Set profile_dir only if you want the agent's own logins to persist.</p></details>
+  <details><summary data-i18n="q3">Which browsers are supported?</summary><p data-i18n="a3">Google Chrome, Microsoft Edge, Brave, Chromium and Vivaldi on Windows, macOS and Linux. Firefox and Safari are not supported (CapyBrowser speaks the Chrome DevTools Protocol).</p></details>
+  <details><summary data-i18n="q4">Does it send my data anywhere?</summary><p data-i18n="a4">Only to the websites the model opens and to DuckDuckGo/Bing for web_search. No telemetry, no account, no API key.</p></details>
+  <details><summary data-i18n="q5">Is it free?</summary><p data-i18n="a5">Yes, MIT licensed and open source.</p></details>
+</div></section>
+
+<footer>
+  <div class="wrap">
+    <img src="assets/icons/capy.svg" alt="" width="64" style="image-rendering:pixelated"><br>
+    <span data-i18n="foot">Made by</span> <a href="https://github.com/capyriver">CapyRiver</a> · <a href="https://t.me/CapyRiver">Telegram</a> · <a href="https://capyriver.pages.dev/">Website</a> · MIT
+  </div>
+  <img class="wave" src="assets/footer.svg" alt="">
+</footer>
+
+<script>
+const RU = {nav_features:"Возможности",nav_start:"Быстрый старт",nav_panel:"Панель",copy:"Копировать",copied:"Скопировано",
+hero_title:"Дайте <em>любой LLM</em> настоящий браузер",
+hero_lead:"MCP-сервер в одном файле, который управляет вашим Chrome, Edge, Brave или Chromium. Сделан для маленьких локальных моделей — даже 4B-модель на ноутбуке ищет, читает, кликает и заполняет формы.",
+cta_start:"Начать",cta_github:"Открыть на GitHub",f_title:"Почему CapyBrowser",f_sub:"Без Playwright, Selenium и Node — один Python-файл и браузер, который у вас уже есть.",
+f1_t:"Для маленьких моделей",f1_p:"Каждая страница превращается в короткий вид: видимый текст и пронумерованные элементы [id], до ~3500 символов.",
+f2_t:"Установка одной ссылкой",f2_p:"uvx всё скачает сам при первом запуске. Windows, macOS и Linux, Chrome, Edge, Brave или Chromium.",
+f3_t:"Все ваши MCP-серверы",f3_p:"GitHub, Notion, файлы, базы данных или любой MCP-сервер в capy.yaml — модель обращается к ним через три компактных инструмента-роутера.",
+f4_t:"Панель управления",f4_p:"capybrowser ui: коннекторы из шаблонов, проверка инструментов, секреты и просмотр того, что видит модель.",
+f5_t:"Безопасно по умолчанию",f5_p:"Отдельный браузер с чистым профилем, DevTools только на 127.0.0.1, токены через ${VAR} и маскируются в ответах.",
+f6_t:"Самовосстановление",f6_p:"Упавший или зависший браузер перезапускается и открывает страницу заново. Всплывающие окна, диалоги, SPA и маски ввода работают.",
+s_title:"Быстрый старт",s_sub:"Три шага. Без аккаунтов и API-ключей.",s1_t:"Установите uv",s2_t:"Добавьте в AI-приложение",s3_t:"Спросите",
+s3_p:"Перезапустите приложение и попросите: «Найди последнюю версию Python и открой официальную страницу».",
+p_title:"Панель управления: capybrowser ui",p_sub:"Локальная офлайн веб-панель. Работает только на вашем компьютере и защищена одноразовым ключом сессии.",
+p1:"Коннекторы с живым статусом, шаблоны в один клик, тесты и вход через OAuth.",p2:"Ровно то, что получит модель, для любой страницы — со счётчиком символов и токенов.",
+y_sub:"Один файл: настройки браузера и все ваши MCP-серверы. Приложение запускает только CapyBrowser, модель получает 6 инструментов браузера плюс list_connectors, find_tools и call_tool. Правки подхватываются на лету.",
+q1:"Работает с локальными моделями?",a1:"Да, это главная цель. Проверено с Qwen 3 4B Instruct в Ollama на процессоре: поиск, переходы, вход в аккаунт, формы, листание, ошибки.",
+q2:"Он не тронет мой обычный профиль браузера?",a2:"Нет. Запускается отдельный браузер с временным профилем, который удаляется при выходе. profile_dir нужен, только если хотите сохранять входы агента.",
+q3:"Какие браузеры поддерживаются?",a3:"Google Chrome, Microsoft Edge, Brave, Chromium и Vivaldi на Windows, macOS и Linux. Firefox и Safari не поддерживаются.",
+q4:"Он куда-то отправляет мои данные?",a4:"Только на сайты, которые открывает модель, и в DuckDuckGo/Bing для web_search. Без телеметрии, аккаунтов и API-ключей.",
+q5:"Это бесплатно?",a5:"Да, открытый код под лицензией MIT.",foot:"Сделано"};
+const EN = {};
+document.querySelectorAll("[data-i18n]").forEach(n => EN[n.dataset.i18n] = n.textContent);
+document.querySelectorAll("[data-i18n-html]").forEach(n => EN[n.dataset.i18nHtml] = n.innerHTML);
+EN.copy = "Copy"; EN.copied = "Copied";
+let lang = (() => { try { return localStorage.getItem("capy_site_lang") || ((navigator.language || "").startsWith("ru") ? "ru" : "en") } catch (e) { return "en" } })();
+function apply() {
+  const d = lang === "ru" ? RU : EN;
+  document.documentElement.lang = lang;
+  document.querySelectorAll("[data-i18n]").forEach(n => { if (d[n.dataset.i18n]) n.textContent = d[n.dataset.i18n] });
+  document.querySelectorAll("[data-i18n-html]").forEach(n => { if (d[n.dataset.i18nHtml]) n.innerHTML = d[n.dataset.i18nHtml] });  // static strings only
+  document.querySelectorAll(".lang button").forEach(b => b.classList.toggle("on", b.dataset.lang === lang));
+}
+document.querySelectorAll(".lang button").forEach(b => b.addEventListener("click", () => { lang = b.dataset.lang; try { localStorage.setItem("capy_site_lang", lang) } catch (e) {} apply() }));
+document.getElementById("copy").addEventListener("click", async e => {
+  const t = document.getElementById("cmd").textContent;
+  try { await navigator.clipboard.writeText(t) } catch (err) { const a = document.createElement("textarea"); a.value = t; document.body.append(a); a.select(); document.execCommand("copy"); a.remove() }
+  e.target.textContent = (lang === "ru" ? RU : EN).copied; setTimeout(() => e.target.textContent = (lang === "ru" ? RU : EN).copy, 1500);
+});
+apply();
+</script>
+</body>
+</html>

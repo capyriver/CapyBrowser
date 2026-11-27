@@ -18,6 +18,8 @@
   &nbsp;·&nbsp;
   <a href="#faq"><img src="assets/icons/capy-question.svg" width="30" height="30" alt="" /> FAQ</a>
   &nbsp;·&nbsp;
+  <a href="https://capybrowser.pages.dev/"><img src="assets/icons/capy-globe.svg" width="30" height="30" alt="" /> Website</a>
+  &nbsp;·&nbsp;
   <a href="https://github.com/capyriver"><img src="assets/icons/capy-heart.svg" width="30" height="30" alt="" /> CapyRiver</a>
   &nbsp;·&nbsp;
   <a href="https://t.me/CapyRiver"><img src="assets/icons/capy-plane.svg" width="30" height="30" alt="" /> Telegram</a>
@@ -487,6 +489,7 @@ pyproject.toml          package metadata and the `capybrowser` command
 examples/               MCP configs for popular apps and an Ollama agent
 tests/                  pytest suite (runs on Windows, macOS and Linux in CI)
 assets/                 banner, tagline, footer, pixel-art capybara icons, panel screenshots, social preview image
+site/                   website capybrowser.pages.dev (static, deployed to Cloudflare Pages by .github/workflows/pages.yml)
 ```
 
 Before the first release the server went through more than 40,000 automated checks: fuzzing on thousands of generated and broken HTML pages, connect/disconnect and crash/kill cycles with leak and zombie-process checks, invalid arguments over the real MCP protocol, and end-to-end runs where a 4B local model completed real tasks on live websites.

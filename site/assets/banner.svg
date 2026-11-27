@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="400" viewBox="0 0 1280 400" role="img" aria-label="CapyBrowser - give any LLM a real browser">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1E140F"/>
+      <stop offset="1" stop-color="#3A2418"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#E39A6F"/>
+      <stop offset="1" stop-color="#C97752"/>
+    </linearGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#FFFFFF" stroke-opacity="0.04"/>
+    </pattern>
+  </defs>
+  <rect width="1280" height="400" fill="url(#sky)"/>
+  <rect width="1280" height="400" fill="url(#grid)"/>
+  <circle cx="1080" cy="80" r="220" fill="#C97752" opacity="0.10"/>
+  <circle cx="1180" cy="360" r="160" fill="#E39A6F" opacity="0.08"/>
+
+  <!-- title (textLength pins widths so any fallback font fits) -->
+  <text x="80" y="170" textLength="560" lengthAdjust="spacingAndGlyphs" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="84" font-weight="800" fill="#FFF6EE">Capy<tspan fill="url(#accent)">Browser</tspan></text>
+  <text x="84" y="222" textLength="380" lengthAdjust="spacingAndGlyphs" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="28" fill="#E8D5C7">Give any LLM a real browser.</text>
+  <text x="84" y="262" textLength="600" lengthAdjust="spacingAndGlyphs" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="22" fill="#B89A87">MCP server · Chrome / Edge / Brave / Chromium · one file</text>
+  <rect x="84" y="294" width="452" height="50" rx="25" fill="#120C09" stroke="#C97752" stroke-opacity="0.7"/>
+  <g transform="translate(106 307)" fill="#FFD9C2">
+    <path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.33-1.76-1.33-1.76-1.09-.74.08-.73.08-.73 1.2.08 1.84 1.24 1.84 1.24 1.07 1.83 2.81 1.3 3.5 1 .11-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.66.24 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.81 5.62-5.48 5.92.43.37.81 1.1.81 2.22v3.29c0 .32.22.7.83.58C20.57 21.8 24 17.3 24 12c0-6.63-5.37-12-12-12z"/>
+  </g>
+  <text x="142" y="326" textLength="372" lengthAdjust="spacingAndGlyphs" font-family="JetBrains Mono, Consolas, Menlo, monospace" font-size="20" fill="#FFD9C2">github.com/<tspan fill="#E39A6F" font-weight="700">capyriver</tspan>/CapyBrowser</text>
+
+  <!-- browser mock -->
+  <g transform="translate(860 70)">
+    <rect width="340" height="250" rx="20" fill="#FFF6EE"/>
+    <rect width="340" height="44" rx="20" fill="#2B1D16"/>
+    <rect y="24" width="340" height="20" fill="#2B1D16"/>
+    <circle cx="26" cy="22" r="7" fill="#FF6B5E"/>
+    <circle cx="50" cy="22" r="7" fill="#FFC24B"/>
+    <circle cx="74" cy="22" r="7" fill="#53D769"/>
+    <rect x="98" y="12" width="222" height="20" rx="10" fill="#4A3529"/>
+    <text x="112" y="27" font-family="Consolas, Menlo, monospace" font-size="12" fill="#E8D5C7">https://…</text>
+    <rect x="24" y="66" width="190" height="14" rx="7" fill="#E7D3C4"/>
+    <rect x="24" y="90" width="260" height="10" rx="5" fill="#F0E2D7"/>
+    <rect x="24" y="108" width="230" height="10" rx="5" fill="#F0E2D7"/>
+    <rect x="24" y="136" width="120" height="34" rx="9" fill="#C97752"/>
+    <text x="40" y="158" font-family="Consolas, Menlo, monospace" textLength="80" lengthAdjust="spacingAndGlyphs" font-size="15" fill="#FFFFFF">[3] click</text>
+    <rect x="156" y="136" width="160" height="34" rx="9" fill="#FFFFFF" stroke="#D9BBA6"/>
+    <text x="168" y="158" font-family="Consolas, Menlo, monospace" textLength="118" lengthAdjust="spacingAndGlyphs" font-size="15" fill="#8B5A3C">[4] type_text</text>
+    <rect x="24" y="186" width="292" height="44" rx="10" fill="#F6EAE0"/>
+    <text x="38" y="213" font-family="Consolas, Menlo, monospace" textLength="230" lengthAdjust="spacingAndGlyphs" font-size="14" fill="#6E4329">open_url · scroll · go_back</text>
+    <path d="M128 152 L128 186 L136 178 L142 191 L148 188 L142 175 L153 174 Z" fill="#FFFFFF" stroke="#2B1D16" stroke-width="3" stroke-linejoin="round"/>
+  </g>
+</svg>
