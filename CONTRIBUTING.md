@@ -14,10 +14,12 @@ uv run capybrowser --headed       # watch the browser while you test
 
 ## Guidelines
 
-- The server stays **one file** (`browser_mcp.py`) with **three small dependencies** (`mcp`, `websockets`, `pyyaml`). Please keep it that way.
+- The server stays **one file** (`browser_mcp.py`) with **four small dependencies** (`mcp`, `websockets`, `pyyaml`, `httpx`). Please keep it that way.
 - Keep tool output compact: every response must fit `--max-chars` (3500 by default) because small local models depend on it.
 - New behaviour needs a test in `tests/` — preferably a tiny local HTML page in the test server rather than a live website.
 - Tests run on Windows, macOS and Linux in CI; avoid OS-specific assumptions.
+- Tests never touch real websites or search engines: use the local fixture servers (`127.0.0.1`).
+- If you change dependencies, update the PEP 723 header, `pyproject.toml` and run `uv lock`.
 - Write commit messages that explain *why*, not only *what*.
 
 ## Reporting a site that does not work

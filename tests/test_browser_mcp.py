@@ -285,7 +285,8 @@ def test_mcp_stdio_smoke(base):
         proc.stdin.write(b'{"jsonrpc":"2.0","method":"notifications/initialized"}\n')
         proc.stdin.flush()
         names = sorted(t["name"] for t in request("tools/list", {})["result"]["tools"])
-        assert names == ["click", "go_back", "open_url", "scroll", "type_text", "web_search"]
+        assert names == ["call_tool", "click", "find_tools", "go_back", "list_connectors", "open_url", "scroll",
+                         "type_text", "web_search"]
         res = request("tools/call", {"name": "open_url", "arguments": {"url": base + "/form"}})["result"]
         assert "Query" in res["content"][0]["text"]
     finally:
@@ -293,91 +294,421 @@ def test_mcp_stdio_smoke(base):
         assert proc.wait(30) == 0
 
 
-# --------------------------------------------------------------------------- capy.yaml + MCP hub
+# --------------------------------------------------------------------------- capy.yaml, connectors, router
 
-ECHO_SERVER = """
+TOKEN = "tok_" + "A1b2C3d4E5f6G7h8"  # fake test token, assembled so secret scanners do not flag it
+
+STDIO_SERVER = r'''
+import os, sys
 from mcp.server.fastmcp import FastMCP
-m = FastMCP("echo")
+m = FastMCP("local")
 
 @m.tool()
-def echo(text: str) -> str:
-    \"\"\"Echo text back.\"\"\"
-    return "ECHO:" + text
+def send_email(to: str, subject: str, body: str = "") -> str:
+    """Send an email message to someone."""
+    return f"sent to {to}: {subject}"
 
 @m.tool()
-def open_url(url: str) -> str:
-    \"\"\"Clashes with the browser tool on purpose.\"\"\"
-    return "FAKE"
+def list_tasks(project: str = "inbox") -> str:
+    """List tasks from the todo list."""
+    return f"tasks of {project}: buy milk"
+
+@m.tool()
+def echo_ru(text: str) -> str:
+    """Echo text back (unicode check)."""
+    return "Получено: " + text
+
+@m.tool()
+def big() -> str:
+    """Return a huge answer."""
+    return "x" * 200000
+
+@m.tool()
+def leak() -> str:
+    """Return the secret from the environment."""
+    return "secret is " + os.environ.get("LOCAL_SECRET", "")
+
+@m.tool()
+def pid() -> int:
+    """Process id."""
+    return os.getpid()
 
 @m.tool()
 def fail() -> str:
-    \"\"\"Always fails.\"\"\"
+    """Always fails."""
     raise ValueError("boom")
 
 m.run("stdio")
-"""
+'''
+
+HTTP_SERVER = r'''
+import sys, uvicorn
+from mcp.server.fastmcp import FastMCP
+port, token = int(sys.argv[1]), sys.argv[2]
+m = FastMCP("remote", host="127.0.0.1", port=port)
+
+@m.tool()
+def create_issue(repo: str, title: str) -> str:
+    """Create a GitHub issue in a code repository."""
+    return f"created {repo}#1: {title}"
+
+@m.tool()
+def whoami() -> str:
+    """Show the token the server sees."""
+    return "authorized with " + token
+
+inner = m.streamable_http_app()
+
+async def app(scope, receive, send):
+    if scope["type"] == "http":
+        auth = dict(scope.get("headers") or []).get(b"authorization", b"").decode()
+        if auth != "Bearer " + token:
+            await send({"type": "http.response.start", "status": 401, "headers": [(b"content-type", b"text/plain")]})
+            await send({"type": "http.response.body", "body": b"unauthorized"})
+            return
+    await inner(scope, receive, send)
+
+uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
+'''
+
+
+@pytest.fixture(scope="module")
+def http_connector(tmp_path_factory):
+    script = tmp_path_factory.mktemp("http") / "http_server.py"
+    script.write_text(HTTP_SERVER, encoding="utf-8")
+    port = bm.free_port()
+    proc = subprocess.Popen([sys.executable, str(script), str(port), TOKEN], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    import socket
+    import time
+
+    deadline = time.time() + 30
+    while time.time() < deadline:
+        with socket.socket() as s:
+            if s.connect_ex(("127.0.0.1", port)) == 0:
+                break
+        time.sleep(0.2)
+    yield f"http://127.0.0.1:{port}/mcp"
+    proc.kill()
+    proc.wait(10)
+
+
+def _write_capy(tmp_path, http_url, max_chars=1500, extra=""):
+    (tmp_path / "local_server.py").write_text(STDIO_SERVER, encoding="utf-8")
+    (tmp_path / ".env").write_text(f"REMOTE_TOKEN={TOKEN}\nLOCAL_SECRET=s3cr3t-local-value\n", encoding="utf-8")
+    cfg = tmp_path / "capy.yaml"
+    cfg.write_text(
+        "browser:\n  lang: de-DE\n  max_chars: %d\n"
+        "mcp_servers:\n"
+        "  local:\n    command: %s\n    args: [%s]\n    description: mail and todo helpers\n"
+        "    env:\n      LOCAL_SECRET: ${LOCAL_SECRET}\n"
+        "  remote:\n    type: streamable-http\n    url: %s\n    description: code hosting\n"
+        "    auth:\n      type: bearer\n      token: ${REMOTE_TOKEN}\n%s"
+        % (max_chars, json.dumps(sys.executable), json.dumps(str(tmp_path / "local_server.py")), http_url, extra),
+        encoding="utf-8")
+    return cfg
+
+
+async def _session_call(cfg_path, scenario, extra_args=()):
+    from mcp import ClientSession, StdioServerParameters
+    from mcp.client.stdio import stdio_client
+
+    env = dict(os.environ)
+    env.pop("CAPYBROWSER_CONFIG", None)
+    params = StdioServerParameters(command=sys.executable, args=[str(ROOT / "browser_mcp.py"), "--config", str(cfg_path), *extra_args],
+                                   env=env)
+    async with stdio_client(params) as (r, w):
+        async with ClientSession(r, w) as s:
+            await s.initialize()
+
+            async def call(name, args=None):
+                res = await s.call_tool(name, args or {})
+                return "".join(getattr(c, "text", "") for c in res.content)
+
+            return await scenario(s, call)
 
 
 def test_capy_yaml_template_is_valid(tmp_path):
     f = tmp_path / "capy.yaml"
     f.write_text(bm.CAPY_YAML_TEMPLATE, encoding="utf-8")
     cfg = bm.load_config(str(f))
-    assert cfg["mcp_servers"] == {} and cfg["browser"]["max_chars"] == 3500 and cfg["path"] == str(f)
+    assert cfg["mcp_servers"] == {} and cfg["browser"]["max_chars"] == 3500 and cfg["browser"]["nav_timeout"] == 25
     assert (ROOT / "capy.yaml").read_text(encoding="utf-8") == bm.CAPY_YAML_TEMPLATE
+    # the commented examples are valid too once uncommented
+    lines = [ln[1:] if ln.startswith("#  ") or ln.startswith("#    ") else ln for ln in bm.CAPY_YAML_TEMPLATE.splitlines()]
+    f.write_text("\n".join(ln.replace("mcp_servers: {}", "mcp_servers:") for ln in lines), encoding="utf-8")
+    cfg = bm.load_config(str(f))
+    assert set(cfg["mcp_servers"]) == {"time", "files", "github", "notion"}
+    assert cfg["mcp_servers"]["github"]["auth"]["type"] == "bearer" and cfg["mcp_servers"]["notion"]["auth"]["type"] == "oauth"
 
 
-def test_capy_yaml_lookup_env_and_validation(tmp_path, monkeypatch):
+def test_config_defaults_empty_and_missing(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("CAPYBROWSER_CONFIG", raising=False)
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     assert bm.load_config(None)["path"] is None
-    monkeypatch.setenv("CAPY_TEST_TOKEN", "secret123")
-    f = tmp_path / "capy.yaml"
-    f.write_text("mcp_servers:\n  x:\n    command: run\n    env: {T: \"${CAPY_TEST_TOKEN}\"}\n", encoding="utf-8")
+    (tmp_path / "capy.yaml").write_text("", encoding="utf-8")
     cfg = bm.load_config(None)
-    assert cfg["path"] == "capy.yaml" and cfg["mcp_servers"]["x"]["env"]["T"] == "secret123"
-    for bad in ("browser: [unclosed\n", "model:\n  name: x\n", "browser:\n  colour: red\n", "mcp_servers:\n  x: {args: [1]}\n",
-                "mcp_servers:\n  x: {command: a, args: b}\n", "- a list\n"):
-        f.write_text(bad, encoding="utf-8")
-        with pytest.raises(ValueError):
-            bm.load_config(str(f))
+    assert cfg["path"] == "capy.yaml" and cfg["mcp_servers"] == {} and cfg["browser"] == {}
     with pytest.raises(FileNotFoundError):
         bm.load_config(str(tmp_path / "missing.yaml"))
 
 
+def test_config_env_and_dotenv(tmp_path, monkeypatch):
+    monkeypatch.setenv("CAPY_TEST_TOKEN", "from-environment")
+    (tmp_path / ".env").write_text('# comment\nexport FROM_FILE="quoted value"\nCAPY_TEST_TOKEN=file-loses\nPLAIN=abc # note\n',
+                                   encoding="utf-8")
+    f = tmp_path / "capy.yaml"
+    f.write_text("mcp_servers:\n  x:\n    command: run\n    args: ['${FROM_FILE}', '${PLAIN}']\n"
+                 "    env: {T: \"${CAPY_TEST_TOKEN}\", M: \"${NOT_SET_ANYWHERE}\"}\n", encoding="utf-8")
+    cfg = bm.load_config(str(f))
+    x = cfg["mcp_servers"]["x"]
+    assert x["args"] == ["quoted value", "abc"] and x["env"]["T"] == "from-environment" and x["env"]["M"] == ""
+    assert any("NOT_SET_ANYWHERE" in w for w in cfg["warnings"])
+    assert bm.mask_secrets("value from-environment here") == "value *** here"
+
+
+@pytest.mark.parametrize("text,needle", [
+    ("model:\n  name: x\n", "unknown option"),
+    ("browser:\n  colour: red\n", "unknown option"),
+    ("browser:\n  max_chars: lots\n", "whole number"),
+    ("browser:\n  max_chars: 50\n", "between 200"),
+    ("browser:\n  headed: maybe\n", "true or false"),
+    ("browser:\n  nav_timeout: 0\n", "between 1"),
+    ("browser: [unclosed\n", "invalid YAML"),
+    ("- a list\n", "top level"),
+    ("mcp_servers:\n  x: {args: [1]}\n", "command"),
+    ("mcp_servers:\n  x: {command: a, args: b}\n", "list"),
+    ("mcp_servers:\n  x: {command: a, url: 'https://e.com'}\n", "only for remote"),
+    ("mcp_servers:\n  x: {url: 'ftp://e.com'}\n", "http"),
+    ("mcp_servers:\n  x: {type: websocket, url: 'https://e.com'}\n", "stdio, streamable-http or sse"),
+    ("mcp_servers:\n  x: {url: 'https://e.com', auth: {type: bearer}}\n", "token"),
+    ("mcp_servers:\n  x: {url: 'https://e.com', auth: {type: magic}}\n", "bearer"),
+    ("mcp_servers:\n  x: {url: 'https://e.com', auth: {type: oauth, redirect_port: 80}}\n", "1024"),
+    ("mcp_servers:\n  bad name: {command: a}\n", "letters"),
+])
+def test_config_validation_errors(tmp_path, text, needle):
+    f = tmp_path / "capy.yaml"
+    f.write_text(text, encoding="utf-8")
+    with pytest.raises(ValueError) as e:
+        bm.load_config(str(f))
+    assert needle in str(e.value)
+
+
+def test_parse_arguments_and_masking():
+    assert bm.parse_arguments({"a": 1}) == {"a": 1}
+    assert bm.parse_arguments('{"a": 1}') == {"a": 1}
+    assert bm.parse_arguments(json.dumps('{"a": 1}')) == {"a": 1}  # double-encoded
+    assert bm.parse_arguments("```json\n{\"a\": 1}\n```") == {"a": 1}
+    assert bm.parse_arguments("{'a': 1}") == {"a": 1}
+    assert bm.parse_arguments(None) == {} and bm.parse_arguments("  ") == {}
+    assert bm.parse_arguments("[1, 2]").startswith("Error") and bm.parse_arguments("not json").startswith("Error")
+    bm.register_secret("my-configured-secret")
+    fake_gh = "ghp_" + "a" * 36
+    out = bm.mask_secrets(f"x my-configured-secret y {fake_gh} Authorization: Bearer abc.def.ghi123456")
+    assert "my-configured-secret" not in out and fake_gh not in out and "abc.def.ghi123456" not in out
+
+
+def test_find_tools_ranking_ru_en():
+    class T:
+        def __init__(self, name, desc, props=None, req=()):
+            self.name, self.description = name, desc
+            self.inputSchema = {"type": "object", "properties": props or {}, "required": list(req)}
+
+    r = bm.Router()
+    c1 = bm.Connector("mail", {"type": "stdio", "enabled": True, "description": "", "timeout": 10})
+    c1.tools = [T("send_email", "Send an email message", {"to": {"type": "string"}}, ["to"]), T("list_tasks", "List todo tasks")]
+    c2 = bm.Connector("gh", {"type": "sse", "enabled": True, "description": "code hosting", "timeout": 10})
+    c2.tools = [T("create_issue", "Create an issue in a repository")]
+    for c in (c1, c2):
+        c.session = object()
+        c._task = type("Running", (), {"done": staticmethod(lambda: False)})()  # "connected" without a transport
+    r.connectors = {"mail": c1, "gh": c2}
+
+    def top(q):
+        return asyncio.run(r.find(q)).splitlines()[1]
+
+    assert top("отправить письмо").startswith("mail.send_email(to: string)")
+    assert top("gmail").startswith("mail.send_email")
+    assert top("мои задачи").startswith("mail.list_tasks")
+    assert top("notion notes").startswith("mail.list_tasks")
+    assert top("код на github").startswith("gh.create_issue")
+    assert "No tools match" in asyncio.run(r.find("погода в Москве"))
+    assert len(asyncio.run(r.find("", limit=1)).splitlines()) == 3  # header, 1 tool, "+N more"
+
+
+def test_oauth_storage_and_callback(tmp_path, monkeypatch):
+    monkeypatch.setenv("CAPYBROWSER_HOME", str(tmp_path))
+    from mcp.shared.auth import OAuthToken
+
+    st = bm._FileTokenStorage("notion", "https://example.com/mcp", {"client_id": "abc", "redirect_uris": ["http://127.0.0.1:1/callback"]})
+    assert asyncio.run(st.get_tokens()) is None and asyncio.run(st.get_client_info()).client_id == "abc"
+    asyncio.run(st.set_tokens(OAuthToken(access_token="access-token-value-123", token_type="Bearer")))
+    assert asyncio.run(st.get_tokens()).access_token == "access-token-value-123"
+    assert "access-token-value-123" not in bm.mask_secrets("t=access-token-value-123")
+    if os.name != "nt":
+        assert (os.stat(st.path).st_mode & 0o777) == 0o600
+    cb = bm._OAuthCallback(bm.free_port())
+    cb.start()
+    import urllib.request
+
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    page = opener.open(f"http://127.0.0.1:{cb.port}/callback?code=<script>x</script>&state=s1", timeout=10).read().decode()
+    assert "<script>" not in page  # nothing from the URL is reflected
+    assert asyncio.run(cb.wait(5)) == ("<script>x</script>", "s1")
+
+
 @needs_browser
-def test_capy_yaml_hub_end_to_end(base, tmp_path):
-    (tmp_path / "echo_server.py").write_text(ECHO_SERVER, encoding="utf-8")
-    cfg = tmp_path / "capy.yaml"
-    cfg.write_text(
-        "browser:\n  lang: de-DE\n  max_chars: 1200\n"
-        "mcp_servers:\n"
-        f"  echo:\n    command: {json.dumps(sys.executable)}\n    args: [{json.dumps(str(tmp_path / 'echo_server.py'))}]\n"
-        "  broken:\n    command: /definitely/not/here\n", encoding="utf-8")
+def test_connectors_end_to_end(base, tmp_path, http_connector):
+    cfg = _write_capy(tmp_path, http_connector)
 
-    async def scenario():
-        from mcp import ClientSession, StdioServerParameters
-        from mcp.client.stdio import stdio_client
+    async def scenario(s, call):
+        names = [t.name for t in (await s.list_tools()).tools]
+        assert names == ["web_search", "open_url", "click", "type_text", "scroll", "go_back",
+                         "list_connectors", "find_tools", "call_tool"]
+        listing = await call("list_connectors")
+        assert "local [stdio]" in listing and "remote [streamable-http]" in listing
+        found = await call("find_tools", {"query": "отправить письмо"})
+        assert found.splitlines()[1].startswith("local.send_email(to: string, subject: string, body?: string)")
+        assert (await call("find_tools", {"query": "github issue"})).splitlines()[1].startswith("remote.create_issue(")
+        assert "local.list_tasks" in (await call("find_tools", {"query": "задачи"}))
+        assert await call("call_tool", {"tool": "local.send_email", "arguments": {"to": "a@b.c", "subject": "Hi"}}) == "sent to a@b.c: Hi"
+        assert await call("call_tool", {"tool": "local.send_email", "arguments": '{"to": "x@y.z", "subject": "JSON"}'}) == "sent to x@y.z: JSON"
+        assert await call("call_tool", {"tool": "remote.create_issue", "arguments": {"repo": "me/r", "title": "Баг"}}) == "created me/r#1: Баг"
+        assert await call("call_tool", {"tool": "echo_ru", "arguments": {"text": "привет, мир 🙂"}}) == "Получено: привет, мир 🙂"
+        big = await call("call_tool", {"tool": "local.big"})
+        assert len(big) <= 1500
+        leak = await call("call_tool", {"tool": "local.leak"})
+        assert "s3cr3t-local-value" not in leak and "***" in leak
+        who = await call("call_tool", {"tool": "remote.whoami"})
+        assert TOKEN not in who and "***" in who
+        failed = await call("call_tool", {"tool": "local.fail"})
+        assert failed.startswith("Error") and "boom" in failed
+        assert (await call("call_tool", {"tool": "local.nope"})).startswith("Error")
+        assert (await call("call_tool", {"tool": "local.send_email", "arguments": "not json"})).startswith("Error: arguments")
+        # connector crash -> one automatic reconnect
+        pid = int(await call("call_tool", {"tool": "local.pid"}))
+        os.kill(pid, 9)
+        assert await call("call_tool", {"tool": "local.send_email", "arguments": {"to": "r", "subject": "after crash"}}) == "sent to r: after crash"
+        assert int(await call("call_tool", {"tool": "local.pid"})) != pid
+        # browser still works and follows capy.yaml settings
+        page = await call("open_url", {"url": base + "/long"})
+        assert "paragraph 0" in page and len(page) <= 1500
+        assert "AL=de-DE" in await call("open_url", {"url": base + "/echo"})
+        return pid
 
-        params = StdioServerParameters(command=sys.executable, args=[str(ROOT / "browser_mcp.py"), "--config", str(cfg)],
-                                       env=dict(os.environ))
-        async with stdio_client(params) as (r, w):
-            async with ClientSession(r, w) as s:
-                await s.initialize()
-                names = [t.name for t in (await s.list_tools()).tools]
-                assert names[:6] == ["web_search", "open_url", "click", "type_text", "scroll", "go_back"]
-                assert {"echo", "echo__open_url", "fail"} <= set(names)
-                assert (await s.call_tool("echo", {"text": "hi"})).content[0].text == "ECHO:hi"
-                assert (await s.call_tool("echo__open_url", {"url": "x"})).content[0].text == "FAKE"
-                failed = await s.call_tool("fail", {})
-                assert failed.isError and "boom" in failed.content[0].text
-                page = (await s.call_tool("open_url", {"url": base + "/long"})).content[0].text
-                assert "paragraph 0" in page and len(page) <= 1200
-                echo = (await s.call_tool("open_url", {"url": base + "/echo"})).content[0].text
-                assert "AL=de-DE" in echo
+    asyncio.run(_session_call(cfg, scenario))
 
-    asyncio.run(scenario())
+
+@needs_browser
+def test_wrong_token_is_reported_and_masked(tmp_path, http_connector):
+    cfg = _write_capy(tmp_path, http_connector)
+    (tmp_path / ".env").write_text("REMOTE_TOKEN=wrong-token-value-999\nLOCAL_SECRET=x\n", encoding="utf-8")
+
+    async def scenario(s, call):
+        out = await call("call_tool", {"tool": "remote.create_issue", "arguments": {"repo": "a", "title": "b"}})
+        assert out.startswith("Error") and "wrong-token-value-999" not in out
+        assert "remote [streamable-http] failed" in await call("list_connectors")
+        assert await call("call_tool", {"tool": "local.send_email", "arguments": {"to": "a", "subject": "b"}}) == "sent to a: b"
+
+    asyncio.run(_session_call(cfg, scenario))
+
+
+@needs_browser
+def test_hot_reload(base, tmp_path, http_connector):
+    import time
+
+    cfg = _write_capy(tmp_path, http_connector, max_chars=3000)
+
+    async def scenario(s, call):
+        assert "time2" not in await call("list_connectors")
+        assert len(await call("open_url", {"url": base + "/long"})) > 1200
+        time.sleep(0.05)
+        text = cfg.read_text(encoding="utf-8").replace("max_chars: 3000", "max_chars: 1200")
+        text += "  time2:\n    command: %s\n    args: [%s]\n" % (json.dumps(sys.executable), json.dumps(str(tmp_path / "local_server.py")))
+        cfg.write_text(text, encoding="utf-8")
+        os.utime(cfg, None)
+        assert "time2 [stdio]" in await call("list_connectors")
+        assert len(await call("scroll", {"direction": "down"})) <= 1200
+        cfg.write_text(text + "  broken: {nonsense: 1}\n", encoding="utf-8")
+        listing = await call("list_connectors")
+        assert "not reloaded" in listing and "time2 [stdio]" in listing  # bad edit keeps the old config
+        assert await call("call_tool", {"tool": "time2.send_email", "arguments": {"to": "t", "subject": "s"}}) == "sent to t: s"
+
+    asyncio.run(_session_call(cfg, scenario))
+
+
+@needs_browser
+def test_profile_dir_kept_temp_profile_removed(run, base, tmp_path):
+    prof = tmp_path / "profile"
+    b = bm.Browser(profile_dir=str(prof), lang="en-US")
+    run(b.ensure())
+    run(b.navigate(base + "/form"))
+    run(b.eval("localStorage.setItem('capy', 'kept')"))
+    run(b.close())
+    assert prof.is_dir() and any(prof.iterdir())
+    b2 = bm.Browser(profile_dir=str(prof), lang="en-US")
+    run(b2.ensure())
+    run(b2.navigate(base + "/form"))
+    assert run(b2.eval("localStorage.getItem('capy')")) == "kept"
+    run(b2.close())
+    assert prof.is_dir()
+    t = bm.Browser(lang="en-US")
+    run(t.ensure())
+    tmp = t.user_data_dir
+    assert tmp and os.path.isdir(tmp)
+    run(t.close())
+    assert not os.path.exists(tmp)
+
+
+def _descendants(pid):
+    out = subprocess.run(["ps", "-A", "-o", "pid=", "-o", "ppid="], capture_output=True, text=True).stdout
+    kids, frontier = set(), {pid}
+    pairs = [tuple(map(int, ln.split())) for ln in out.splitlines() if len(ln.split()) == 2]
+    while frontier:
+        nxt = {p for p, pp in pairs if pp in frontier} - kids
+        kids |= nxt
+        frontier = nxt
+    return kids
+
+
+@needs_browser
+@pytest.mark.skipif(os.name == "nt", reason="POSIX signals")
+@pytest.mark.parametrize("sig", ["SIGTERM", "SIGINT", "SIGHUP"])
+def test_signal_kills_browser_and_connectors(tmp_path, http_connector, sig):
+    import signal
+    import time
+
+    cfg = _write_capy(tmp_path, http_connector)
+    proc = subprocess.Popen([sys.executable, str(ROOT / "browser_mcp.py"), "--config", str(cfg)], stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+
+    def request(mid, method, params):
+        proc.stdin.write((json.dumps({"jsonrpc": "2.0", "id": mid, "method": method, "params": params}) + "\n").encode())
+        proc.stdin.flush()
+        while True:
+            msg = json.loads(proc.stdout.readline())
+            if msg.get("id") == mid:
+                return msg
+
+    request(1, "initialize", {"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}})
+    proc.stdin.write(b'{"jsonrpc":"2.0","method":"notifications/initialized"}\n')
+    proc.stdin.flush()
+    request(2, "tools/call", {"name": "find_tools", "arguments": {"query": "email"}})
+    request(3, "tools/call", {"name": "open_url", "arguments": {"url": "about:blank"}})
+    kids = _descendants(proc.pid)
+    assert len(kids) >= 2  # browser tree + stdio connector
+    os.kill(proc.pid, getattr(signal, sig))
+    proc.wait(20)
+    deadline = time.time() + 10
+    alive = kids
+    while time.time() < deadline:
+        out = subprocess.run(["ps", "-A", "-o", "pid=", "-o", "stat="], capture_output=True, text=True).stdout
+        alive = {int(p) for p, st in (ln.split()[:2] for ln in out.splitlines() if ln.strip()) if int(p) in kids and not st.startswith("Z")}
+        if not alive:
+            break
+        time.sleep(0.2)
+    assert not alive, f"left running: {alive}"
 
 
 def test_init_creates_template(tmp_path):
@@ -388,8 +719,63 @@ def test_init_creates_template(tmp_path):
     assert again.returncode != 0
 
 
-def test_bad_config_exits_with_message(tmp_path):
+def test_check_and_bad_config_cli(tmp_path):
     f = tmp_path / "capy.yaml"
     f.write_text("browser:\n  colour: red\n", encoding="utf-8")
     out = subprocess.run([sys.executable, str(ROOT / "browser_mcp.py"), "--config", str(f)], capture_output=True, text=True, timeout=60)
-    assert out.returncode != 0 and "unknown option" in out.stderr
+    assert out.returncode != 0 and "unknown option" in out.stderr and "Traceback" not in out.stderr
+    f.write_text("mcp_servers:\n  t:\n    command: x\n    env: {K: super-secret-cli-value}\n", encoding="utf-8")
+    out = subprocess.run([sys.executable, str(ROOT / "browser_mcp.py"), "check", "-c", str(f)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0 and "t [stdio]" in out.stdout and "super-secret-cli-value" not in out.stdout
+
+
+def test_works_without_config(tmp_path):
+    env = dict(os.environ, HOME=str(tmp_path), USERPROFILE=str(tmp_path))
+    env.pop("CAPYBROWSER_CONFIG", None)
+    proc = subprocess.Popen([sys.executable, str(ROOT / "browser_mcp.py")], cwd=tmp_path, env=env, stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    msgs = [{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05", "capabilities": {},
+                                                                            "clientInfo": {"name": "t", "version": "1"}}},
+            {"jsonrpc": "2.0", "method": "notifications/initialized"},
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "list_connectors", "arguments": {}}}]
+    for m in msgs:
+        proc.stdin.write((json.dumps(m) + "\n").encode())
+    proc.stdin.flush()
+    reply = None
+    while reply is None:
+        msg = json.loads(proc.stdout.readline())
+        if msg.get("id") == 2:
+            reply = msg
+    proc.stdin.close()
+    err = proc.stderr.read()
+    assert proc.wait(30) == 0 and b"Traceback" not in err
+    assert "No connectors configured" in reply["result"]["content"][0]["text"]
+
+
+def test_config_state_reload_unit(tmp_path):
+    import time
+
+    f = tmp_path / "capy.yaml"
+    f.write_text("browser:\n  max_chars: 1000\n  nav_timeout: 7\n", encoding="utf-8")
+    old_max, old_nav = bm._CONFIG["max_chars"], bm.NAV_TIMEOUT
+    try:
+        state = bm.ConfigState(str(f), {})
+        state.load_initial()
+        asyncio.run(bm.apply_config(state))
+        assert bm._CONFIG["max_chars"] == 1000 and bm.NAV_TIMEOUT == 7 and not state.changed()
+        time.sleep(0.02)
+        f.write_text("browser:\n  max_chars: 1200\n", encoding="utf-8")
+        assert state.changed()
+        asyncio.run(state.maybe_reload())
+        assert bm._CONFIG["max_chars"] == 1200 and not state.changed()
+        (tmp_path / ".env").write_text("X=1\n", encoding="utf-8")  # .env next to the file is watched too
+        assert state.changed()
+        asyncio.run(state.maybe_reload())
+        f.unlink()  # explicit file removed: the last good config stays
+        assert not state.changed()
+        asyncio.run(state.maybe_reload())
+        assert bm._CONFIG["max_chars"] == 1200
+        cli = bm.ConfigState(None, {"max_chars": 900, "headed": None})
+        assert cli.effective()["max_chars"] == 900 and cli.effective()["headed"] is False
+    finally:
+        bm._CONFIG["max_chars"], bm.NAV_TIMEOUT = old_max, old_nav

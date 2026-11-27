@@ -2,9 +2,10 @@
 # /// script
 # requires-python = ">=3.10"
 # dependencies = [
-#     "mcp>=1.2.0,<2",
+#     "mcp>=1.13.0,<2",
 #     "websockets>=13.0",
 #     "pyyaml>=6.0",
+#     "httpx>=0.27",
 # ]
 # ///
 """CapyBrowser (browser_mcp.py) - a single-file MCP server that lets an LLM drive the system browser.
@@ -16,12 +17,14 @@ https://github.com/capyriver/CapyBrowser
     uv run browser_mcp.py            # headless (default)
     uv run browser_mcp.py --headed   # visible window, for debugging
     uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser
-    capybrowser --config capy.yaml   # browser settings + extra MCP servers from one file
+    capybrowser --config capy.yaml   # browser settings + extra MCP servers ("connectors") from one file
+    capybrowser init | check         # create / validate capy.yaml
 
 Options: --browser PATH (or env BROWSER_MCP_PATH), --max-chars N (default 3500),
 --lang ru-RU (or env BROWSER_MCP_LANG; default: system locale),
 --allow-local-files (or env BROWSER_MCP_ALLOW_FILE=1) to permit file:// URLs.
-Tools: web_search, open_url, click, type_text, scroll, go_back.
+Tools: web_search, open_url, click, type_text, scroll, go_back
+       + list_connectors, find_tools, call_tool for the MCP servers listed in capy.yaml.
 """
 from __future__ import annotations
 
@@ -52,7 +55,7 @@ if os.name == "nt":
         with contextlib.suppress(Exception):
             _stream.reconfigure(encoding="utf-8", errors="replace")
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 log = logging.getLogger("browser_mcp")
 
@@ -331,6 +334,8 @@ def cleanup_all() -> None:
     for b in items:
         with contextlib.suppress(Exception):
             b.kill_sync()
+    with contextlib.suppress(Exception):
+        kill_connector_processes()
 
 
 def _reap_zombies() -> None:
@@ -1178,8 +1183,12 @@ def parse_id(element_id: Any) -> int:
 
 class Browser:
     def __init__(self, headed: bool = False, path: str | None = None, max_chars: int = MAX_CHARS,
-                 lang: str | None = None):
+                 lang: str | None = None, profile_dir: str | None = None):
         self.headed = headed
+        # Persistent profile (kept between runs) or None for a temporary one that is always deleted.
+        self.profile_dir = os.path.abspath(os.path.expanduser(profile_dir)) if profile_dir else None
+        self.user_data_dir: str | None = None
+        self.browser_ws: str | None = None
         self.lang = normalize_lang(lang) or system_lang()
         self.path = path
         self.max_chars = max_chars
@@ -1206,7 +1215,7 @@ class Browser:
             f"--remote-debugging-port={self.port}",
             "--remote-debugging-address=127.0.0.1",
             "--remote-allow-origins=*",
-            f"--user-data-dir={self.tmp}",
+            f"--user-data-dir={self.user_data_dir}",
             "--no-first-run", "--no-default-browser-check", "--disable-default-apps",
             "--disable-extensions", "--disable-sync", "--disable-translate",
             "--disable-background-networking", "--disable-component-update",
@@ -1251,9 +1260,14 @@ class Browser:
         raise RuntimeError(f"Could not start browser {exe}: {last_err}")
 
     async def _launch_once(self, exe: str) -> None:
-        self.tmp = tempfile.mkdtemp(prefix=TMP_PREFIX)
-        with open(os.path.join(self.tmp, "owner.pid"), "w", encoding="ascii") as f:
-            f.write(str(os.getpid()))
+        if self.profile_dir:
+            os.makedirs(self.profile_dir, exist_ok=True)
+            self.user_data_dir = self.profile_dir
+        else:
+            self.tmp = tempfile.mkdtemp(prefix=TMP_PREFIX)
+            with open(os.path.join(self.tmp, "owner.pid"), "w", encoding="ascii") as f:
+                f.write(str(os.getpid()))
+            self.user_data_dir = self.tmp
         self.port = free_port()
         kw: dict[str, Any] = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if IS_WIN:
@@ -1278,6 +1292,7 @@ class Browser:
                 await asyncio.sleep(0.1)
         if not version:
             raise RuntimeError("DevTools endpoint did not come up")
+        self.browser_ws = version.get("webSocketDebuggerUrl")
         ua = str(version.get("User-Agent") or "")
         self.user_agent = ua.replace("HeadlessChrome", "Chrome") if ua else None
         target = None
@@ -1364,6 +1379,15 @@ class Browser:
         if cdp is not None:
             with contextlib.suppress(Exception):
                 await cdp.close()
+        if self.profile_dir and self.proc is not None and self.proc.poll() is None and self.browser_ws:
+            # persistent profile: let Chrome flush cookies/localStorage to disk before it exits
+            with contextlib.suppress(Exception):
+                bcdp = await CDP.connect(self.browser_ws)
+                with contextlib.suppress(Exception):
+                    await bcdp.send("Browser.close", timeout=5)
+                await bcdp.close()
+                proc = self.proc
+                await asyncio.to_thread(proc.wait, 10)
         await asyncio.to_thread(self.kill_sync)
 
     async def ensure(self) -> bool:
@@ -1425,8 +1449,9 @@ class Browser:
             await asyncio.sleep(0.15)
 
     async def _watch_nav(self, action: Callable[[], Any], grace: float = 1.2,
-                         timeout: float = NAV_TIMEOUT) -> tuple[Any, bool]:
+                         timeout: float | None = None) -> tuple[Any, bool]:
         """Run action(); if it starts a navigation, wait for the page to load. Returns (result, navigated)."""
+        timeout = NAV_TIMEOUT if timeout is None else timeout
         assert self.cdp is not None
         cdp = self.cdp
         started = cdp.waiter("Page.frameStartedLoading", self._main)
@@ -1688,7 +1713,7 @@ class Browser:
 
 _browser: Browser | None = None
 _lock: asyncio.Lock | None = None
-_CONFIG: dict[str, Any] = {"headed": False, "path": None, "max_chars": MAX_CHARS, "lang": None,
+_CONFIG: dict[str, Any] = {"headed": False, "path": None, "max_chars": MAX_CHARS, "lang": None, "profile_dir": None,
                            "allow_files": os.environ.get("BROWSER_MCP_ALLOW_FILE", "").strip().lower()
                            in ("1", "true", "yes", "on")}
 
@@ -1697,7 +1722,7 @@ def get_browser() -> Browser:
     global _browser
     if _browser is None:
         _browser = Browser(headed=_CONFIG["headed"], path=_CONFIG["path"], max_chars=_CONFIG["max_chars"],
-                           lang=_CONFIG["lang"])
+                           lang=_CONFIG["lang"], profile_dir=_CONFIG.get("profile_dir"))
     return _browser
 
 
@@ -1715,6 +1740,7 @@ def clip(text: str, max_chars: int) -> str:
 async def run_tool(name: str, fn: Callable[[Browser], Any], retry: bool = True) -> str:
     """Serialize tool calls, (re)start the browser as needed and never raise into the MCP layer.
     The returned text never exceeds the configured max_chars (including any restart note)."""
+    await _reload_if_needed()
     out = await _run_tool(name, fn, retry)
     return clip(out, int(_CONFIG.get("max_chars") or MAX_CHARS))
 
@@ -1836,7 +1862,16 @@ async def tool_go_back() -> str:
 def build_server():
     from mcp.server.fastmcp import FastMCP
 
-    mcp = FastMCP("capybrowser")
+    @contextlib.asynccontextmanager
+    async def lifespan(_app: Any):
+        try:
+            yield {}
+        finally:
+            await ROUTER.close_all()
+            kill_connector_processes()
+
+    mcp = FastMCP("capybrowser", lifespan=lifespan)
+    mcp._mcp_server.version = __version__
 
     @mcp.tool()
     async def web_search(query: str) -> str:
@@ -1870,6 +1905,22 @@ def build_server():
         """Go back to the previous page in the browser history."""
         return await tool_go_back()
 
+    @mcp.tool()
+    async def list_connectors() -> str:
+        """List the extra MCP connectors from capy.yaml (mail, files, GitHub...) and their status."""
+        return await tool_list_connectors()
+
+    @mcp.tool()
+    async def find_tools(query: str = "", connector: str | None = None, limit: int = 8) -> str:
+        """Find connector tools by what you need (English or Russian, e.g. 'send email', 'задачи').
+        Returns tool names with arguments; then use call_tool."""
+        return await tool_find_tools(query, connector, limit)
+
+    @mcp.tool()
+    async def call_tool(tool: str, arguments: dict | str | None = None) -> str:
+        """Run a connector tool found with find_tools. tool = 'connector.tool', arguments = JSON object."""
+        return await tool_call_tool(tool, arguments)
+
     return mcp
 
 
@@ -1886,8 +1937,11 @@ def _install_signal_handlers() -> None:
 
 
 def setup(headed: bool = False, path: str | None = None, max_chars: int = MAX_CHARS, lang: str | None = None,
-          allow_files: bool | None = None) -> None:
-    _CONFIG.update(headed=headed, path=path, max_chars=max_chars, lang=lang)
+          allow_files: bool | None = None, profile_dir: str | None = None, nav_timeout: float | None = None) -> None:
+    global NAV_TIMEOUT
+    _CONFIG.update(headed=headed, path=path, max_chars=max_chars, lang=lang, profile_dir=profile_dir)
+    if nav_timeout:
+        NAV_TIMEOUT = float(nav_timeout)
     if allow_files is not None:
         _CONFIG["allow_files"] = bool(allow_files) or _CONFIG["allow_files"]
     atexit.register(cleanup_all)
@@ -1896,41 +1950,90 @@ def setup(headed: bool = False, path: str | None = None, max_chars: int = MAX_CH
     cleanup_stale_dirs()
 
 
-# --------------------------------------------------------------------------- capy.yaml + MCP hub
+# --------------------------------------------------------------------------- secrets
+
+_SECRET_VALUES: set[str] = set()
+_SECRET_RE = re.compile(
+    r"(sk-[A-Za-z0-9_\-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AIza[0-9A-Za-z_\-]{30,}"
+    r"|xox[abprs]-[A-Za-z0-9\-]{10,}|\b\d{8,10}:AA[A-Za-z0-9_\-]{30,}\b|AKIA[0-9A-Z]{16}"
+    r"|eyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,})")
+_AUTH_RE = re.compile(r"(?i)\b(bearer|basic)(\s+)([A-Za-z0-9._~+/\-]{8,}=*)")
+
+
+def register_secret(value: Any) -> None:
+    """Remember a configured secret so it is never echoed back to the model or written to logs."""
+    if isinstance(value, str) and len(value.strip()) >= 6:
+        _SECRET_VALUES.add(value.strip())
+
+
+def mask_secrets(text: Any) -> str:
+    text = "" if text is None else str(text)
+    for value in sorted(_SECRET_VALUES, key=len, reverse=True):
+        if value in text:
+            text = text.replace(value, "***")
+    text = _SECRET_RE.sub("***", text)
+    return _AUTH_RE.sub(lambda m: m.group(1) + m.group(2) + "***", text)
+
+
+class _MaskingFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        with contextlib.suppress(Exception):
+            record.msg = mask_secrets(record.getMessage())
+            record.args = ()
+        return True
+
+
+# --------------------------------------------------------------------------- capy.yaml
 
 CAPY_YAML_TEMPLATE = """\
-# capy.yaml - CapyBrowser config: browser settings + extra MCP servers.
-# Your AI app starts only CapyBrowser; CapyBrowser starts the servers below
-# and gives the model their tools next to the browser tools.
-# Docs: https://github.com/capyriver/CapyBrowser#capyyaml
+# capy.yaml - CapyBrowser config: browser settings + extra MCP servers ("connectors").
+# Your AI app starts only CapyBrowser. The model gets the 6 browser tools plus three
+# router tools (list_connectors, find_tools, call_tool) that reach every connector below.
+# The file is re-read automatically when it changes. Docs:
+# https://github.com/capyriver/CapyBrowser#capyyaml
 
 browser:
   headed: false              # true = show the browser window
   lang: en-US                # browser language; remove to use the system locale
-  max_chars: 3500            # max size of one page view returned to the model
+  max_chars: 3500            # max size of any tool response
+  nav_timeout: 25            # seconds to wait for a page to load
   allow_local_files: false   # allow file:// URLs
-  # path: C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe   # a specific browser
+  # profile_dir: ~/.capybrowser/profile   # keep cookies/logins between runs (default: temporary profile)
+  # browser: /path/to/chrome              # a specific browser executable
 
-mcp_servers: {}              # any stdio MCP servers, same format as Claude Desktop:
-#  time:
+# env_file: .env             # KEY=VALUE file next to capy.yaml (loaded automatically if present)
+
+mcp_servers: {}              # connectors; examples (remove "{}" above when you add one):
+#  time:                     # local stdio server, same format as Claude Desktop
 #    command: uvx
 #    args: ["mcp-server-time"]
-#  filesystem:
+#    description: current time and time zones
+#  files:
 #    command: npx
-#    args: ["-y", "@modelcontextprotocol/server-filesystem", "C:/Users/me/Documents"]
-#    env:
-#      SOME_TOKEN: ${SOME_TOKEN}   # ${VAR} is read from the environment
+#    args: ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/folder"]
+#  github:                   # remote server with a token from the environment / .env
+#    type: streamable-http   # or: sse
+#    url: https://api.githubcopilot.com/mcp/
+#    auth:
+#      type: bearer
+#      token: ${GITHUB_TOKEN}
+#  notion:                   # remote server with OAuth 2.0 + PKCE (opens your browser once)
+#    type: streamable-http
+#    url: https://mcp.notion.com/mcp
+#    auth:
+#      type: oauth
 """
 
+_TOP_KEYS = {"browser", "mcp_servers", "env_file"}
+_BROWSER_KEYS = {"headed", "browser", "path", "lang", "max_chars", "profile_dir", "allow_local_files", "nav_timeout"}
+_SERVER_KEYS = {"type", "command", "args", "env", "cwd", "url", "headers", "auth", "description", "enabled", "timeout"}
+_AUTH_KEYS = {"type", "token", "client_id", "client_secret", "scopes", "redirect_port", "client_name"}
+_TYPES = {"stdio": "stdio", "streamable-http": "streamable-http", "streamable_http": "streamable-http",
+          "http": "streamable-http", "sse": "sse"}
 
-def _expand_env(value: Any) -> Any:
-    if isinstance(value, str):
-        return re.sub(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}", lambda m: os.environ.get(m.group(1), ""), value)
-    if isinstance(value, list):
-        return [_expand_env(v) for v in value]
-    if isinstance(value, dict):
-        return {k: _expand_env(v) for k, v in value.items()}
-    return value
+
+class ConfigError(ValueError):
+    pass
 
 
 def find_config(path: str | None) -> str | None:
@@ -1946,120 +2049,1005 @@ def find_config(path: str | None) -> str | None:
     return None
 
 
+def load_dotenv(path: str) -> dict[str, str]:
+    """Minimal .env parser: KEY=VALUE, optional 'export', quotes and # comments."""
+    out: dict[str, str] = {}
+    with open(path, encoding="utf-8-sig") as f:
+        for raw in f:
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("export "):
+                line = line[7:].lstrip()
+            key, sep, value = line.partition("=")
+            key = key.strip()
+            if not sep or not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", key):
+                continue
+            value = value.strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+                value = value[1:-1]
+            else:
+                value = re.sub(r"\s+#.*$", "", value)
+            out[key] = value
+    return out
+
+
+def _expand(value: Any, env: dict[str, str], missing: set[str]) -> Any:
+    if isinstance(value, str):
+        def sub(m: re.Match) -> str:
+            name = m.group(1)
+            if name not in env:
+                missing.add(name)
+            return env.get(name, "")
+        return re.sub(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}", sub, value)
+    if isinstance(value, list):
+        return [_expand(v, env, missing) for v in value]
+    if isinstance(value, dict):
+        return {k: _expand(v, env, missing) for k, v in value.items()}
+    return value
+
+
+def _check_keys(where: str, data: dict, allowed: set[str]) -> None:
+    bad = sorted(set(map(str, data)) - allowed)
+    if bad:
+        raise ConfigError(f"{where}: unknown option(s): {', '.join(bad)} (allowed: {', '.join(sorted(allowed))})")
+
+
+def _want(where: str, value: Any, kinds: tuple, what: str) -> Any:
+    if value is not None and (not isinstance(value, kinds) or (bool not in kinds and isinstance(value, bool))):
+        raise ConfigError(f"{where}: must be {what}")
+    return value
+
+
+def _normalize_server(name: str, spec: Any) -> dict:
+    where = f"mcp_servers.{name}"
+    if not re.match(r"^[A-Za-z0-9][A-Za-z0-9_\-]{0,40}$", str(name)):
+        raise ConfigError(f"{where}: name may contain only letters, digits, '-' and '_' (max 41 chars)")
+    if not isinstance(spec, dict):
+        raise ConfigError(f"{where}: must be a mapping (command/args or url)")
+    _check_keys(where, spec, _SERVER_KEYS)
+    kind = spec.get("type") or ("stdio" if spec.get("command") else "streamable-http" if spec.get("url") else None)
+    if kind is None:
+        raise ConfigError(f"{where}: set 'command' (local stdio server) or 'url' (remote server)")
+    if str(kind).lower() not in _TYPES:
+        raise ConfigError(f"{where}.type: must be stdio, streamable-http or sse")
+    out: dict[str, Any] = {"type": _TYPES[str(kind).lower()]}
+    out["description"] = str(_want(f"{where}.description", spec.get("description"), (str,), "a string") or "")
+    out["enabled"] = bool(_want(f"{where}.enabled", spec.get("enabled", True), (bool,), "true or false"))
+    timeout = _want(f"{where}.timeout", spec.get("timeout", 120), (int, float), "a number of seconds")
+    if not 1 <= float(timeout) <= 3600:
+        raise ConfigError(f"{where}.timeout: must be between 1 and 3600 seconds")
+    out["timeout"] = float(timeout)
+    if out["type"] == "stdio":
+        for k in ("url", "headers", "auth"):
+            if k in spec:
+                raise ConfigError(f"{where}.{k}: only for remote servers (type streamable-http or sse)")
+        if not isinstance(spec.get("command"), str) or not spec["command"].strip():
+            raise ConfigError(f"{where}.command: required for a stdio server")
+        args = spec.get("args") or []
+        if not isinstance(args, list) or not all(isinstance(a, (str, int, float)) for a in args):
+            raise ConfigError(f"{where}.args: must be a list of strings")
+        env = spec.get("env") or {}
+        if not isinstance(env, dict):
+            raise ConfigError(f"{where}.env: must be a mapping NAME: value")
+        out.update(command=spec["command"], args=[str(a) for a in args], env={str(k): str(v) for k, v in env.items()},
+                   cwd=os.path.expanduser(str(spec["cwd"])) if spec.get("cwd") else None)
+        for v in out["env"].values():
+            register_secret(v)
+        return out
+    for k in ("command", "args", "env", "cwd"):
+        if k in spec:
+            raise ConfigError(f"{where}.{k}: only for stdio servers")
+    url = spec.get("url")
+    if not isinstance(url, str) or not re.match(r"^https?://[^\s/]+", url):
+        raise ConfigError(f"{where}.url: required, must start with http:// or https://")
+    headers = spec.get("headers") or {}
+    if not isinstance(headers, dict):
+        raise ConfigError(f"{where}.headers: must be a mapping Header-Name: value")
+    out.update(url=url, headers={str(k): str(v) for k, v in headers.items()}, auth=None)
+    for k, v in out["headers"].items():
+        if k.lower() in ("authorization", "cookie", "proxy-authorization") or "token" in k.lower() or "key" in k.lower():
+            register_secret(v)
+            register_secret(v.split(" ", 1)[-1])
+    auth = spec.get("auth")
+    if auth is not None:
+        if not isinstance(auth, dict):
+            raise ConfigError(f"{where}.auth: must be a mapping with 'type: bearer' or 'type: oauth'")
+        _check_keys(f"{where}.auth", auth, _AUTH_KEYS)
+        atype = str(auth.get("type") or "").lower()
+        if atype == "bearer":
+            token = auth.get("token")
+            if not isinstance(token, str) or not token.strip():
+                raise ConfigError(f"{where}.auth.token: required for bearer auth (use ${{ENV_VAR}})")
+            register_secret(token)
+            out["auth"] = {"type": "bearer", "token": token.strip()}
+        elif atype == "oauth":
+            scopes = auth.get("scopes") or []
+            if isinstance(scopes, str):
+                scopes = scopes.split()
+            if not isinstance(scopes, list):
+                raise ConfigError(f"{where}.auth.scopes: must be a list or a space-separated string")
+            port = _want(f"{where}.auth.redirect_port", auth.get("redirect_port", 33418), (int,), "a port number")
+            if not 1024 <= int(port) <= 65535:
+                raise ConfigError(f"{where}.auth.redirect_port: must be between 1024 and 65535")
+            register_secret(auth.get("client_secret"))
+            out["auth"] = {"type": "oauth", "client_id": auth.get("client_id") or None,
+                           "client_secret": auth.get("client_secret") or None, "scopes": [str(x) for x in scopes],
+                           "redirect_port": int(port), "client_name": str(auth.get("client_name") or "CapyBrowser")}
+        else:
+            raise ConfigError(f"{where}.auth.type: must be 'bearer' or 'oauth'")
+    return out
+
+
 def load_config(path: str | None) -> dict:
-    """Read and validate capy.yaml. Returns {"browser": {...}, "mcp_servers": {...}, "path": str|None}."""
+    """Read and validate capy.yaml (+ optional .env). Always returns a usable config; with no file,
+    the defaults run the built-in browser only."""
     found = find_config(path)
-    data: Any = {}
-    if found:
-        with open(found, encoding="utf-8") as f:
-            text = f.read()
+    cfg: dict[str, Any] = {"path": found, "browser": {}, "mcp_servers": {}, "warnings": [], "files": []}
+    if not found:
+        return cfg
+    cfg["files"].append(found)
+    with open(found, encoding="utf-8-sig") as f:
+        text = f.read()
+    try:
         if found.endswith(".json"):
             data = json.loads(text or "{}")
         else:
             import yaml
 
-            try:
-                data = yaml.safe_load(text) or {}
-            except yaml.YAMLError as e:
-                raise ValueError(f"{found}: invalid YAML: {e}") from None
+            data = yaml.safe_load(text)
+    except Exception as e:
+        raise ConfigError(f"{found}: invalid {'JSON' if found.endswith('.json') else 'YAML'}: {e}") from None
+    if data is None:
+        return cfg  # empty file = defaults
     if not isinstance(data, dict):
-        raise ValueError(f"{found}: the top level must be a mapping")
-    unknown = set(data) - {"browser", "mcp_servers"}
-    if unknown:
-        raise ValueError(f"{found}: unknown section(s): {', '.join(sorted(unknown))} (allowed: browser, mcp_servers)")
-    data = _expand_env(data)
+        raise ConfigError(f"{found}: the top level must be a mapping (browser:, mcp_servers:)")
+    _check_keys(found, data, _TOP_KEYS)
+    env = dict(os.environ)
+    env_file = data.get("env_file")
+    if env_file is not None and not isinstance(env_file, str):
+        raise ConfigError(f"{found}: env_file must be a path")
+    env_path = os.path.join(os.path.dirname(os.path.abspath(found)), os.path.expanduser(env_file or ".env"))
+    if os.path.isfile(env_path):
+        cfg["files"].append(env_path)
+        for k, v in load_dotenv(env_path).items():
+            env.setdefault(k, v)
+            register_secret(v)
+    elif env_file:
+        cfg["warnings"].append(f"env_file not found: {env_file}")
+    missing: set[str] = set()
+    data = _expand(data, env, missing)
+    if missing:
+        cfg["warnings"].append("environment variable(s) not set: " + ", ".join(sorted(missing)))
     browser = data.get("browser") or {}
     if not isinstance(browser, dict):
-        raise ValueError("browser must be a mapping")
-    allowed = {"headed", "lang", "max_chars", "allow_local_files", "path"}
-    bad = set(browser) - allowed
-    if bad:
-        raise ValueError(f"browser: unknown option(s): {', '.join(sorted(bad))} (allowed: {', '.join(sorted(allowed))})")
+        raise ConfigError("browser: must be a mapping")
+    _check_keys("browser", browser, _BROWSER_KEYS)
+    b: dict[str, Any] = {}
+    b["headed"] = _want("browser.headed", browser.get("headed"), (bool,), "true or false")
+    b["allow_local_files"] = _want("browser.allow_local_files", browser.get("allow_local_files"), (bool,), "true or false")
+    b["lang"] = _want("browser.lang", browser.get("lang"), (str,), "a language like ru-RU")
+    exe = browser.get("browser", browser.get("path"))
+    b["browser"] = os.path.expanduser(_want("browser.browser", exe, (str,), "a path to the browser executable")) if exe else None
+    pdir = _want("browser.profile_dir", browser.get("profile_dir"), (str,), "a folder path")
+    b["profile_dir"] = os.path.expanduser(pdir) if pdir else None
+    mc = _want("browser.max_chars", browser.get("max_chars"), (int,), "a whole number")
+    if mc is not None and not 200 <= mc <= 200000:
+        raise ConfigError("browser.max_chars: must be between 200 and 200000")
+    b["max_chars"] = mc
+    nt = _want("browser.nav_timeout", browser.get("nav_timeout"), (int, float), "a number of seconds")
+    if nt is not None and not 1 <= nt <= 600:
+        raise ConfigError("browser.nav_timeout: must be between 1 and 600 seconds")
+    b["nav_timeout"] = float(nt) if nt is not None else None
+    cfg["browser"] = b
     servers = data.get("mcp_servers") or {}
     if not isinstance(servers, dict):
-        raise ValueError("mcp_servers must be a mapping of name -> {command, args, env}")
-    for name, spec in servers.items():
-        if not isinstance(spec, dict) or not spec.get("command"):
-            raise ValueError(f"mcp_servers.{name}: 'command' is required")
-        if not isinstance(spec.get("args") or [], list):
-            raise ValueError(f"mcp_servers.{name}: 'args' must be a list")
-        if not isinstance(spec.get("env") or {}, dict):
-            raise ValueError(f"mcp_servers.{name}: 'env' must be a mapping")
-    return {"browser": browser, "mcp_servers": servers, "path": found}
+        raise ConfigError("mcp_servers: must be a mapping of name -> server settings")
+    cfg["mcp_servers"] = {str(n): _normalize_server(str(n), s) for n, s in servers.items()}
+    return cfg
 
 
-class McpHub:
-    """Starts the MCP servers from capy.yaml and forwards their tools through CapyBrowser."""
+def _config_key(path: str | None, extra: list | None = None) -> tuple:
+    files = [path] if path else []
+    if path:
+        files.append(os.path.join(os.path.dirname(os.path.abspath(path)), ".env"))
+    files += [f for f in (extra or []) if f not in files]
+    key = []
+    for f in files:
+        try:
+            st = os.stat(f)
+            key.append((f, st.st_mtime_ns, st.st_size))
+        except OSError:
+            key.append((f, None, None))
+    return tuple(key)
 
-    def __init__(self, servers: dict, reserved: set[str]):
-        self.servers = servers
-        self.reserved = set(reserved)
-        self.tools: list[Any] = []
-        self.routes: dict[str, tuple[Any, str]] = {}
 
-    @contextlib.asynccontextmanager
-    async def running(self):
-        from mcp import ClientSession, StdioServerParameters
-        from mcp.client.stdio import stdio_client
+# --------------------------------------------------------------------------- child processes of connectors
 
-        async with contextlib.AsyncExitStack() as stack:
-            for sname, spec in self.servers.items():
-                env = dict(os.environ)
-                env.update({str(k): str(v) for k, v in (spec.get("env") or {}).items()})
-                params = StdioServerParameters(command=str(spec["command"]),
-                                               args=[str(a) for a in spec.get("args") or []], env=env)
+_CONNECTOR_PIDS: set[int] = set()
+
+
+def _child_pids() -> set[int]:
+    """PIDs of our direct child processes (Linux, macOS and Windows)."""
+    me = os.getpid()
+    out: set[int] = set()
+    try:
+        if IS_LINUX:
+            for name in os.listdir("/proc"):
+                if name.isdigit():
+                    with contextlib.suppress(OSError, ValueError, IndexError):
+                        with open(f"/proc/{name}/stat", encoding="ascii", errors="replace") as f:
+                            stat = f.read()
+                        if int(stat[stat.rindex(")") + 2:].split()[1]) == me:
+                            out.add(int(name))
+        elif IS_WIN:
+            import ctypes
+            from ctypes import wintypes
+
+            class PE(ctypes.Structure):
+                _fields_ = [("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD), ("th32ProcessID", wintypes.DWORD),
+                            ("th32DefaultHeapID", ctypes.c_void_p), ("th32ModuleID", wintypes.DWORD),
+                            ("cntThreads", wintypes.DWORD), ("th32ParentProcessID", wintypes.DWORD),
+                            ("pcPriClassBase", ctypes.c_long), ("dwFlags", wintypes.DWORD),
+                            ("szExeFile", ctypes.c_wchar * 260)]
+
+            k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            k32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+            snap = k32.CreateToolhelp32Snapshot(0x2, 0)  # TH32CS_SNAPPROCESS
+            if snap and snap != wintypes.HANDLE(-1).value:
                 try:
-                    read, write = await stack.enter_async_context(stdio_client(params))
-                    session = await stack.enter_async_context(ClientSession(read, write))
-                    await asyncio.wait_for(session.initialize(), 60)
-                    listed = (await asyncio.wait_for(session.list_tools(), 60)).tools
-                except Exception as e:  # one broken server must not take the browser down
-                    log.warning("capy.yaml: MCP server %r failed to start: %s", sname, e)
-                    continue
-                for tool in listed:
-                    name = tool.name
-                    if name in self.reserved or name in self.routes:
-                        name = f"{sname}__{tool.name}"
-                    self.routes[name] = (session, tool.name)
-                    self.tools.append(tool.model_copy(update={"name": name, "outputSchema": None}))
-                log.info("capy.yaml: %s -> %d tools", sname, len(listed))
-            yield self
-
-    async def call(self, name: str, arguments: dict) -> list:
-        session, real = self.routes[name]
-        res = await session.call_tool(real, arguments or {})
-        if res.isError:
-            raise RuntimeError("".join(getattr(c, "text", "") for c in res.content) or f"{name} failed")
-        return list(res.content)
+                    pe = PE()
+                    pe.dwSize = ctypes.sizeof(PE)
+                    ok = k32.Process32FirstW(snap, ctypes.byref(pe))
+                    while ok:
+                        if pe.th32ParentProcessID == me:
+                            out.add(int(pe.th32ProcessID))
+                        ok = k32.Process32NextW(snap, ctypes.byref(pe))
+                finally:
+                    k32.CloseHandle(snap)
+        else:
+            res = subprocess.run(["ps", "-A", "-o", "pid=", "-o", "ppid="], capture_output=True, text=True, timeout=5)
+            for line in res.stdout.splitlines():
+                parts = line.split()
+                if len(parts) == 2 and parts[1] == str(me):
+                    out.add(int(parts[0]))
+    except Exception:
+        pass
+    return out
 
 
-def attach_hub(mcp: Any, servers: dict) -> None:
-    """Expose the tools of the capy.yaml MCP servers next to the browser tools."""
-    if not servers:
+def _kill_tree(pid: int) -> None:
+    if not _pid_alive(pid):
         return
-    own_list, own_call = mcp.list_tools, mcp.call_tool
-    reserved = {t.name for t in mcp._tool_manager.list_tools()}
-    hub = McpHub(servers, reserved)
-    server = mcp._mcp_server
-    inner_lifespan = server.lifespan
+    if IS_WIN:
+        with contextlib.suppress(Exception):
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True, timeout=10)
+        return
+    with contextlib.suppress(Exception):
+        pgid = os.getpgid(pid)
+        if pgid == pid:  # stdio connectors run in their own session/process group
+            os.killpg(pgid, signal.SIGKILL)
+            return
+    with contextlib.suppress(Exception):
+        os.kill(pid, signal.SIGKILL)
 
-    @contextlib.asynccontextmanager
-    async def lifespan(app):
-        async with hub.running(), inner_lifespan(app) as ctx:
-            yield ctx
 
-    server.lifespan = lifespan
+def kill_connector_processes() -> None:
+    for pid in list(_CONNECTOR_PIDS):
+        _kill_tree(pid)
+        _CONNECTOR_PIDS.discard(pid)
+    _reap_zombies()
 
-    async def list_tools():
-        return list(await own_list()) + list(hub.tools)
 
-    async def call_tool(name: str, arguments: dict):
-        if name in hub.routes:
-            return await hub.call(name, arguments)
-        return await own_call(name, arguments)
+# --------------------------------------------------------------------------- connectors + router
 
-    server.list_tools()(list_tools)
-    server.call_tool(validate_input=False)(call_tool)
+_SYNONYMS = [
+    {"mail", "email", "e-mail", "gmail", "outlook", "inbox", "почта", "почту", "почты", "письмо", "письма", "писем",
+     "ящик", "imap", "smtp", "message"},
+    {"task", "tasks", "todo", "todos", "notes", "note", "notion", "задача", "задачи", "задач", "заметка", "заметки",
+     "заметок", "список", "trello", "jira", "linear", "todoist", "page", "pages", "страница"},
+    {"code", "github", "git", "gitlab", "repo", "repository", "repositories", "pr", "pull", "issue", "issues", "commit",
+     "код", "репозиторий", "репо", "коммит", "ветка", "branch"},
+    {"file", "files", "folder", "directory", "filesystem", "fs", "path", "файл", "файлы", "файла", "папка", "папки",
+     "документ", "документы", "read", "write", "прочитать", "записать"},
+    {"calendar", "event", "events", "meeting", "schedule", "календарь", "встреча", "встречи", "событие", "события",
+     "расписание"},
+    {"time", "date", "clock", "timezone", "время", "дата", "часы", "часовой", "пояс", "сейчас", "now"},
+    {"search", "find", "lookup", "query", "поиск", "найти", "искать", "найди"},
+    {"database", "db", "sql", "table", "postgres", "sqlite", "mysql", "база", "базы", "таблица", "запрос"},
+    {"chat", "slack", "telegram", "discord", "message", "messages", "send", "сообщение", "сообщения", "отправить",
+     "чат", "написать"},
+    {"weather", "погода", "погоду", "forecast", "прогноз"},
+    {"memory", "remember", "память", "запомнить", "knowledge", "graph"},
+    {"translate", "translation", "перевод", "перевести", "language"},
+]
+_SYN_INDEX: dict[str, set[str]] = {}
+for _group in _SYNONYMS:
+    for _w in _group:
+        _SYN_INDEX.setdefault(_w, set()).update(_group)
+
+
+def _words(text: str) -> list[str]:
+    text = re.sub(r"([a-z])([A-Z])", r"\1 \2", str(text or ""))
+    return [w for w in re.split(r"[^0-9A-Za-zА-Яа-яЁёҚқҒғҮүҰұӘәІіҢңӨөҺһ]+", text.lower()) if w]
+
+
+def _stem(word: str) -> str:
+    return word[:5] if len(word) > 5 else word
+
+
+def _signature(qualified: str, tool: Any, width: int = 90) -> str:
+    schema = getattr(tool, "inputSchema", None) or {}
+    props = schema.get("properties") or {}
+    required = set(schema.get("required") or [])
+    args = []
+    for pname, pspec in list(props.items())[:8]:
+        ptype = pspec.get("type") if isinstance(pspec, dict) else None
+        if isinstance(ptype, list):
+            ptype = "|".join(str(t) for t in ptype if t != "null")
+        if not ptype and isinstance(pspec, dict) and pspec.get("enum"):
+            ptype = "|".join(map(str, pspec["enum"][:4]))
+        args.append(f"{pname}{'' if pname in required else '?'}: {ptype or 'any'}")
+    if len(props) > 8:
+        args.append("…")
+    desc = re.sub(r"\s+", " ", (getattr(tool, "description", None) or "").strip())
+    return f"{qualified}({', '.join(args)})" + (f" — {_cut(desc, width)}" if desc else "")
+
+
+class ConnectorError(RuntimeError):
+    pass
+
+
+class _FileTokenStorage:
+    """OAuth tokens / client registration for one connector, stored in ~/.capybrowser/oauth (mode 600)."""
+
+    def __init__(self, name: str, url: str, client: dict | None):
+        base = os.environ.get("CAPYBROWSER_HOME") or os.path.join(os.path.expanduser("~"), ".capybrowser")
+        digest = __import__("hashlib").sha256(url.encode()).hexdigest()[:10]
+        self.path = os.path.join(base, "oauth", f"{name}-{digest}.json")
+        self.client = client
+
+    def _read(self) -> dict:
+        try:
+            with open(self.path, encoding="utf-8") as f:
+                return json.load(f)
+        except (OSError, ValueError):
+            return {}
+
+    def _write(self, data: dict) -> None:
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        tmp = self.path + ".tmp"
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        os.replace(tmp, self.path)
+
+    async def get_tokens(self):
+        from mcp.shared.auth import OAuthToken
+
+        data = self._read().get("tokens")
+        if data:
+            register_secret(data.get("access_token"))
+            register_secret(data.get("refresh_token"))
+        return OAuthToken.model_validate(data) if data else None
+
+    async def set_tokens(self, tokens) -> None:
+        register_secret(tokens.access_token)
+        register_secret(getattr(tokens, "refresh_token", None))
+        data = self._read()
+        data["tokens"] = tokens.model_dump(mode="json", exclude_none=True)
+        self._write(data)
+
+    async def get_client_info(self):
+        from mcp.shared.auth import OAuthClientInformationFull
+
+        data = self._read().get("client_info") or self.client
+        return OAuthClientInformationFull.model_validate(data) if data else None
+
+    async def set_client_info(self, client_info) -> None:
+        data = self._read()
+        data["client_info"] = client_info.model_dump(mode="json", exclude_none=True)
+        self._write(data)
+
+
+class _OAuthCallback:
+    """Local http://127.0.0.1:<port>/callback receiver for the authorization code (PKCE flow)."""
+
+    def __init__(self, port: int):
+        self.port = port
+        self.result: tuple[str, str | None] | None = None
+        self.error: str | None = None
+        self.done = threading.Event()
+        self.server: Any = None
+
+    def start(self) -> None:
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+        outer = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *a):  # keep codes out of logs
+                pass
+
+            def do_GET(self):
+                q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+                if urllib.parse.urlsplit(self.path).path != "/callback":
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+                if q.get("code"):
+                    outer.result = (q["code"][0], (q.get("state") or [None])[0])
+                    body = "Authorization complete. You can close this window and return to your AI app."
+                else:
+                    outer.error = (q.get("error") or ["no authorization code"])[0]
+                    body = "Authorization failed. You can close this window."
+                data = ("<!doctype html><meta charset=utf-8><title>CapyBrowser</title><p>" + body + "</p>").encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+                outer.done.set()
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", self.port), Handler)
+        self.server.daemon_threads = True
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def stop(self) -> None:
+        if self.server is not None:
+            with contextlib.suppress(Exception):
+                self.server.shutdown()
+                self.server.server_close()
+            self.server = None
+
+    async def wait(self, timeout: float = 300.0) -> tuple[str, str | None]:
+        try:
+            ok = await asyncio.to_thread(self.done.wait, timeout)
+        finally:
+            self.stop()
+        if not ok:
+            raise ConnectorError("OAuth sign-in timed out (no answer in the browser within 5 minutes)")
+        if self.result is None:
+            raise ConnectorError(f"OAuth sign-in failed: {self.error}")
+        return self.result
+
+
+def _oauth_provider(name: str, spec: dict) -> Any:
+    from mcp.client.auth import OAuthClientProvider
+    from mcp.shared.auth import OAuthClientMetadata
+
+    auth = spec["auth"]
+    redirect = f"http://127.0.0.1:{auth['redirect_port']}/callback"
+    meta = OAuthClientMetadata(client_name=auth["client_name"], redirect_uris=[redirect],
+                               grant_types=["authorization_code", "refresh_token"], response_types=["code"],
+                               scope=" ".join(auth["scopes"]) or None,
+                               token_endpoint_auth_method="client_secret_post" if auth["client_secret"] else "none")
+    preset = None
+    if auth["client_id"]:
+        preset = dict(meta.model_dump(mode="json", exclude_none=True), client_id=auth["client_id"])
+        if auth["client_secret"]:
+            preset["client_secret"] = auth["client_secret"]
+    storage = _FileTokenStorage(name, spec["url"], preset)
+    box: dict[str, _OAuthCallback] = {}
+
+    async def redirect_handler(url: str) -> None:
+        import webbrowser
+
+        cb = _OAuthCallback(auth["redirect_port"])
+        cb.start()
+        box["cb"] = cb
+        log.warning("connector %s: sign in in your browser: %s", name, url)
+        with contextlib.suppress(Exception):
+            webbrowser.open(url)
+
+    async def callback_handler() -> tuple[str, str | None]:
+        cb = box.pop("cb", None)
+        if cb is None:
+            raise ConnectorError("OAuth callback was not started")
+        return await cb.wait()
+
+    return OAuthClientProvider(server_url=spec["url"], client_metadata=meta, storage=storage,
+                               redirect_handler=redirect_handler, callback_handler=callback_handler)
+
+
+def _http_client_factory(url: str) -> Callable[..., Any]:
+    host = (urllib.parse.urlsplit(url).hostname or "").lower()
+    loopback = host in ("127.0.0.1", "localhost", "::1")
+
+    def factory(headers: dict | None = None, timeout: Any = None, auth: Any = None) -> Any:
+        import httpx
+
+        return httpx.AsyncClient(headers=headers, timeout=timeout or httpx.Timeout(30.0, read=300.0), auth=auth,
+                                 follow_redirects=True, trust_env=not loopback)
+
+    return factory
+
+
+def _first_error(e: BaseException) -> BaseException:
+    while isinstance(e, BaseExceptionGroup) and e.exceptions:  # noqa: F821 (3.11+)
+        e = e.exceptions[0]
+    return e
+
+
+try:  # Python 3.10 has no built-in ExceptionGroup
+    BaseExceptionGroup  # noqa: B018
+except NameError:  # pragma: no cover
+    class BaseExceptionGroup(BaseException):  # type: ignore[no-redef]
+        exceptions: tuple = ()
+
+
+class Connector:
+    """One MCP server from capy.yaml. Connects lazily; the session lives in its own task so that
+    the transport's cancel scopes are entered and exited in the same task."""
+
+    def __init__(self, name: str, spec: dict):
+        self.name, self.spec = name, spec
+        self.session: Any = None
+        self.tools: list[Any] = []
+        self.status = "not connected"
+        self.error: str | None = None
+        self.pids: set[int] = set()
+        self._task: asyncio.Task | None = None
+        self._stop: asyncio.Event | None = None
+        self._ready: asyncio.Event | None = None
+        self._lock = asyncio.Lock()
+
+    @property
+    def connected(self) -> bool:
+        return self.session is not None and self._task is not None and not self._task.done()
+
+    async def ensure(self) -> None:
+        async with self._lock:
+            if self.connected:
+                return
+            await self._shutdown()
+            self._stop, self._ready, self.error = asyncio.Event(), asyncio.Event(), None
+            self.status = "connecting"
+            before = _child_pids() if self.spec["type"] == "stdio" else set()
+            self._task = asyncio.ensure_future(self._run())
+            try:
+                await asyncio.wait_for(asyncio.shield(self._ready.wait()), timeout=max(30.0, self.spec["timeout"]))
+            except asyncio.TimeoutError:
+                self.error = self.error or "timed out while connecting"
+            if self.spec["type"] == "stdio":
+                browsers = {b.proc.pid for b in list(_LIVE) if b.proc is not None}
+                self.pids = (_child_pids() - before) - browsers
+                _CONNECTOR_PIDS.update(self.pids)
+            if not self.connected:
+                err = self.error or "connection closed"
+                await self._shutdown()
+                self.status, self.error = "failed", err
+                raise ConnectorError(f"connector '{self.name}' is not available: {mask_secrets(err)}")
+
+    async def _open(self, stack: contextlib.AsyncExitStack) -> tuple[Any, Any]:
+        spec = self.spec
+        if spec["type"] == "stdio":
+            from mcp import StdioServerParameters
+            from mcp.client.stdio import stdio_client
+
+            env = dict(os.environ)
+            env.update(spec["env"])
+            env.setdefault("PYTHONIOENCODING", "utf-8")
+            params = StdioServerParameters(command=spec["command"], args=spec["args"], env=env, cwd=spec["cwd"])
+            read, write = await stack.enter_async_context(stdio_client(params))
+            return read, write
+        headers = dict(spec["headers"])
+        auth = None
+        if spec["auth"] and spec["auth"]["type"] == "bearer":
+            headers["Authorization"] = "Bearer " + spec["auth"]["token"]
+        elif spec["auth"] and spec["auth"]["type"] == "oauth":
+            auth = _oauth_provider(self.name, spec)
+        factory = _http_client_factory(spec["url"])
+        if spec["type"] == "sse":
+            from mcp.client.sse import sse_client
+
+            read, write = await stack.enter_async_context(
+                sse_client(spec["url"], headers=headers, timeout=30, httpx_client_factory=factory, auth=auth))
+            return read, write
+        from mcp.client.streamable_http import streamablehttp_client
+
+        read, write, _ = await stack.enter_async_context(
+            streamablehttp_client(spec["url"], headers=headers, timeout=30, httpx_client_factory=factory, auth=auth))
+        return read, write
+
+    async def _run(self) -> None:
+        from mcp import ClientSession
+
+        assert self._stop is not None and self._ready is not None
+        try:
+            async with contextlib.AsyncExitStack() as stack:
+                read, write = await self._open(stack)
+                session = await stack.enter_async_context(ClientSession(read, write))
+                await session.initialize()
+                tools: list[Any] = []
+                cursor = None
+                for _ in range(20):
+                    page = await session.list_tools(cursor) if cursor else await session.list_tools()
+                    tools.extend(page.tools)
+                    cursor = getattr(page, "nextCursor", None)
+                    if not cursor:
+                        break
+                self.tools, self.session, self.status = tools, session, "connected"
+                self._ready.set()
+                await self._stop.wait()
+        except BaseException as e:  # noqa: BLE001 - report every transport failure, including cancellation
+            err = _first_error(e)
+            if not isinstance(err, asyncio.CancelledError):
+                self.error = f"{type(err).__name__}: {err}"[:500]
+                log.warning("connector %s: %s", self.name, mask_secrets(self.error))
+        finally:
+            self.session = None
+            if self.status == "connected":
+                self.status = "disconnected"
+            self._ready.set()
+
+    async def _shutdown(self) -> None:
+        task, stop = self._task, self._stop
+        self._task = None
+        if task is not None and not task.done():
+            if stop is not None:
+                stop.set()
+            try:
+                await asyncio.wait_for(asyncio.shield(task), timeout=8)
+            except (asyncio.TimeoutError, Exception):
+                task.cancel()
+                with contextlib.suppress(BaseException):
+                    await asyncio.wait_for(task, timeout=3)
+        for pid in list(self.pids):
+            _kill_tree(pid)
+            _CONNECTOR_PIDS.discard(pid)
+        self.pids = set()
+        self.session = None
+
+    async def close(self) -> None:
+        async with self._lock:
+            await self._shutdown()
+            self.status = "not connected"
+
+    async def call(self, tool: str, arguments: dict) -> Any:
+        from datetime import timedelta
+
+        if not self.connected:
+            raise ConnectorError(f"connector '{self.name}' is not connected")
+        return await self.session.call_tool(tool, arguments, read_timeout_seconds=timedelta(seconds=self.spec["timeout"]))
+
+
+_RETRYABLE = ("ClosedResourceError", "BrokenResourceError", "EndOfStream", "BrokenPipeError", "ConnectionError",
+              "ConnectionResetError", "RemoteProtocolError", "ReadError", "ConnectError", "WriteError")
+
+
+def _is_disconnect(e: BaseException) -> bool:
+    e = _first_error(e)
+    if type(e).__name__ in _RETRYABLE or isinstance(e, (ConnectionError, BrokenPipeError, EOFError)):
+        return True
+    text = str(e).lower()
+    return "connection closed" in text or "closed resource" in text or "broken pipe" in text
+
+
+class Router:
+    """Holds the connectors from capy.yaml and implements list_connectors / find_tools / call_tool."""
+
+    def __init__(self) -> None:
+        self.connectors: dict[str, Connector] = {}
+        self.warnings: list[str] = []
+
+    async def update(self, servers: dict) -> None:
+        for name in list(self.connectors):
+            if name not in servers or servers[name] != self.connectors[name].spec:
+                await self.connectors.pop(name).close()
+        for name, spec in servers.items():
+            if name not in self.connectors:
+                self.connectors[name] = Connector(name, spec)
+
+    async def close_all(self) -> None:
+        for c in list(self.connectors.values()):
+            with contextlib.suppress(Exception):
+                await c.close()
+
+    def _enabled(self) -> list[Connector]:
+        return [c for c in self.connectors.values() if c.spec["enabled"]]
+
+    def list_text(self) -> str:
+        lines = []
+        if not self.connectors:
+            lines.append("No connectors configured. Add MCP servers under mcp_servers: in capy.yaml "
+                         "(create one with: capybrowser init).")
+        for c in self.connectors.values():
+            if not c.spec["enabled"]:
+                state = "disabled"
+            elif c.status == "connected":
+                state = f"connected, {len(c.tools)} tools"
+            elif c.status == "failed":
+                state = f"failed: {_cut(c.error or '', 160)}"
+            else:
+                state = "ready (connects on first use)"
+            desc = f" — {c.spec['description']}" if c.spec["description"] else ""
+            lines.append(f"- {c.name} [{c.spec['type']}] {state}{desc}")
+        for w in self.warnings:
+            lines.append(f"! {w}")
+        if self.connectors:
+            lines.append('Next: find_tools("what you need") to get tool names, then call_tool(tool, arguments).')
+        return "\n".join(lines)
+
+    async def _connect_all(self, only: str | None = None) -> list[str]:
+        problems = []
+        targets = [c for c in self._enabled() if only in (None, c.name)]
+        results = await asyncio.gather(*(c.ensure() for c in targets), return_exceptions=True)
+        for c, r in zip(targets, results, strict=True):
+            if isinstance(r, BaseException):
+                problems.append(f"{c.name}: {_cut(str(r), 160)}")
+        return problems
+
+    async def find(self, query: str, connector: str | None = None, limit: int = 8) -> str:
+        if connector and connector not in self.connectors:
+            return f"Error: unknown connector '{connector}'. Known: {', '.join(self.connectors) or 'none'}"
+        if not self.connectors:
+            return self.list_text()
+        problems = await self._connect_all(connector)
+        qwords = _words(query)
+        expanded: set[str] = set()
+        for w in qwords:
+            expanded.add(w)
+            expanded |= _SYN_INDEX.get(w, set())
+            for key, group in _SYN_INDEX.items():
+                if len(w) >= 4 and len(key) >= 4 and _stem(w) == _stem(key):
+                    expanded |= group
+        stems = {_stem(w) for w in expanded if len(w) >= 3}
+        scored = []
+        for c in self._enabled():
+            if connector and c.name != connector:
+                continue
+            cwords = set(_words(c.name + " " + c.spec["description"]))
+            for t in c.tools:
+                name_words = set(_words(t.name))
+                desc_words = set(_words(t.description or ""))
+                score = 0.0
+                for w in expanded:
+                    if w in name_words:
+                        score += 3
+                    if w in desc_words:
+                        score += 1
+                    if w in cwords:
+                        score += 2
+                score += 0.5 * len(stems & ({_stem(x) for x in name_words | desc_words | cwords if len(x) >= 3}))
+                if not qwords:
+                    score = 1
+                if score > 0:
+                    scored.append((score, c.name, t))
+        scored.sort(key=lambda x: (-x[0], x[1], x[2].name))
+        limit = max(1, min(int(limit or 8), 25))
+        lines = [_signature(f"{c}.{t.name}", t) for _, c, t in scored[:limit]]
+        out = []
+        if lines:
+            out.append(f"Tools for '{_cut(query, 60)}' (arg? = optional). Call with call_tool(tool, arguments):")
+            out += lines
+            if len(scored) > limit:
+                out.append(f"(+{len(scored) - limit} more; refine the query)")
+        else:
+            names = ", ".join(f"{c.name}({len(c.tools)})" for c in self._enabled() if c.connected)
+            out.append(f"No tools match '{_cut(query, 60)}'. Connected: {names or 'none'}. "
+                       "Try other words or find_tools('') to list everything.")
+        if problems:
+            out.append("Unavailable: " + "; ".join(problems))
+        return "\n".join(out)
+
+    def _resolve(self, tool: str) -> tuple[Connector, str] | str:
+        tool = (tool or "").strip()
+        for sep in (".", "__", "/", ":"):
+            if sep in tool:
+                cname, tname = tool.split(sep, 1)
+                if cname in self.connectors:
+                    return self.connectors[cname], tname
+        hits = [(c, t.name) for c in self._enabled() for t in c.tools if t.name == tool]
+        if len(hits) == 1:
+            return hits[0]
+        if len(hits) > 1:
+            return f"Error: '{tool}' exists in several connectors: " + ", ".join(f"{c.name}.{t}" for c, t in hits)
+        return f"Error: unknown tool '{tool}'. Use find_tools to get the exact name (connector.tool)."
+
+    async def call(self, tool: str, arguments: Any) -> str:
+        args = parse_arguments(arguments)
+        if isinstance(args, str):
+            return args
+        if not self.connectors:
+            return self.list_text()
+        target = self._resolve(tool)
+        if isinstance(target, str) and "." not in tool and "__" not in tool:
+            await self._connect_all()  # bare tool name: tool lists are needed to find it
+            target = self._resolve(tool)
+        if isinstance(target, str):
+            return target
+        conn, tname = target
+        if not conn.spec["enabled"]:
+            return f"Error: connector '{conn.name}' is disabled in capy.yaml"
+        for attempt in range(2):
+            try:
+                await conn.ensure()
+                if conn.tools and tname not in {t.name for t in conn.tools}:
+                    return (f"Error: connector '{conn.name}' has no tool '{tname}'. "
+                            f"Available: {', '.join(t.name for t in conn.tools[:30])}")
+                res = await conn.call(tname, args)
+                return format_tool_result(res)
+            except ConnectorError as e:
+                return f"Error: {e}"
+            except BaseException as e:  # noqa: BLE001
+                err = _first_error(e)
+                if isinstance(err, asyncio.CancelledError):
+                    raise
+                if attempt == 0 and _is_disconnect(err):
+                    log.warning("connector %s dropped (%s); reconnecting", conn.name, type(err).__name__)
+                    await conn.close()
+                    continue
+                return f"Error: {conn.name}.{tname} failed: {type(err).__name__}: {_cut(str(err), 400)}"
+        return f"Error: connector '{conn.name}' disconnected again; try later"
+
+
+def parse_arguments(arguments: Any) -> dict | str:
+    """Accept a dict, a JSON string (even double-encoded) or nothing. Returns a dict or an error string."""
+    value = arguments
+    for _ in range(3):
+        if value is None:
+            return {}
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return {}
+            if text.startswith("```"):
+                text = re.sub(r"^```[a-zA-Z]*\s*|\s*```$", "", text)
+            try:
+                value = json.loads(text)
+                continue
+            except ValueError:
+                try:
+                    import ast
+
+                    value = ast.literal_eval(text)
+                    continue
+                except Exception:
+                    return 'Error: arguments must be a JSON object, e.g. {"query": "text"}'
+        break
+    return 'Error: arguments must be a JSON object, e.g. {"query": "text"}'
+
+
+def format_tool_result(res: Any) -> str:
+    parts = []
+    for c in getattr(res, "content", None) or []:
+        kind = getattr(c, "type", "")
+        if kind == "text":
+            parts.append(getattr(c, "text", ""))
+        elif kind == "resource":
+            r = getattr(c, "resource", None)
+            parts.append(getattr(r, "text", None) or f"[resource {getattr(r, 'uri', '')}]")
+        elif kind:
+            parts.append(f"[{kind} omitted]")
+    text = "\n".join(p for p in parts if p)
+    if not text and getattr(res, "structuredContent", None) is not None:
+        text = json.dumps(res.structuredContent, ensure_ascii=False)
+    text = text or "(empty result)"
+    return ("Error from tool: " + text) if getattr(res, "isError", False) else text
+
+
+# --------------------------------------------------------------------------- config state + hot reload
+
+class ConfigState:
+    def __init__(self, explicit: str | None, cli: dict):
+        self.explicit = explicit
+        self.cli = {k: v for k, v in cli.items() if v is not None}
+        self.key: tuple = ()
+        self.current: dict = {"path": None, "browser": {}, "mcp_servers": {}, "warnings": [], "files": []}
+        self.error: str | None = None
+        self.lock: asyncio.Lock | None = None
+
+    def effective(self) -> dict:
+        b = dict(self.current["browser"])
+        merged = {"headed": False, "browser": None, "lang": None, "max_chars": MAX_CHARS, "profile_dir": None,
+                  "allow_local_files": False, "nav_timeout": float(os.environ.get("BROWSER_MCP_NAV_TIMEOUT", "25"))}
+        merged.update({k: v for k, v in b.items() if v is not None})
+        merged.update(self.cli)
+        return merged
+
+    def load_initial(self) -> dict:
+        cfg = load_config(self.explicit)
+        self.current = cfg
+        self.key = _config_key(cfg["path"], cfg["files"])
+        return cfg
+
+    def _path(self) -> str | None:
+        if self.explicit and not os.path.isfile(self.explicit):
+            return self.current.get("path")  # an explicit file that vanished: keep the last good config
+        try:
+            return find_config(self.explicit)
+        except FileNotFoundError:
+            return None
+
+    def changed(self) -> bool:
+        if self.explicit and not os.path.isfile(self.explicit):
+            return False  # keep the last good config until the file is back
+        return _config_key(self._path(), self.current.get("files")) != self.key
+
+    async def maybe_reload(self) -> None:
+        if not self.changed():
+            return
+        if self.lock is None:
+            self.lock = asyncio.Lock()
+        async with self.lock:
+            if not self.changed():
+                return
+            path = self._path()
+            if path and not os.path.isfile(path):
+                return
+            new_key = _config_key(path, self.current.get("files"))
+            try:
+                cfg = load_config(path) if path else {"path": None, "browser": {}, "mcp_servers": {},
+                                                      "warnings": [], "files": []}
+            except (ConfigError, OSError) as e:
+                self.key = new_key
+                self.error = f"capy.yaml was not reloaded: {e}"
+                ROUTER.warnings = [self.error] + self.current.get("warnings", [])
+                log.warning("%s", self.error)
+                return
+            self.key, self.current, self.error = _config_key(path, cfg["files"]), cfg, None
+            await apply_config(self)
+            log.info("capy.yaml reloaded (%s)", path or "no file")
+
+
+CONFIG_STATE: ConfigState | None = None
+ROUTER = Router()
+
+
+async def apply_config(state: ConfigState) -> None:
+    """Apply browser settings and connectors. Launch settings take effect on the next browser start."""
+    global NAV_TIMEOUT, _browser
+    eff = state.effective()
+    old = (_CONFIG.get("headed"), _CONFIG.get("path"), _CONFIG.get("lang"), _CONFIG.get("profile_dir"))
+    _CONFIG.update(headed=bool(eff["headed"]), path=eff["browser"], lang=eff["lang"], max_chars=int(eff["max_chars"]),
+                   profile_dir=eff["profile_dir"], allow_files=bool(eff["allow_local_files"]) or _env_allows_files())
+    NAV_TIMEOUT = float(eff["nav_timeout"])
+    new = (_CONFIG["headed"], _CONFIG["path"], _CONFIG["lang"], _CONFIG["profile_dir"])
+    if _browser is not None:
+        _browser.max_chars = _CONFIG["max_chars"]
+        if new != old:
+            b, _browser = _browser, None
+            await b.close()
+    ROUTER.warnings = list(state.current.get("warnings", []))
+    await ROUTER.update(state.current["mcp_servers"])
+
+
+def _env_allows_files() -> bool:
+    return os.environ.get("BROWSER_MCP_ALLOW_FILE", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+async def _reload_if_needed() -> None:
+    if CONFIG_STATE is not None:
+        with contextlib.suppress(Exception):
+            await CONFIG_STATE.maybe_reload()
+
+
+def _limit(text: str) -> str:
+    return clip(mask_secrets(text), int(_CONFIG.get("max_chars") or MAX_CHARS))
+
+
+async def tool_list_connectors() -> str:
+    await _reload_if_needed()
+    return _limit(ROUTER.list_text())
+
+
+async def tool_find_tools(query: str = "", connector: str | None = None, limit: int = 8) -> str:
+    await _reload_if_needed()
+    try:
+        return _limit(await ROUTER.find(str(query or ""), connector or None, limit))
+    except Exception as e:  # never raise into the MCP layer
+        return _limit(f"Error: find_tools failed: {type(e).__name__}: {e}")
+
+
+async def tool_call_tool(tool: str, arguments: Any = None) -> str:
+    await _reload_if_needed()
+    try:
+        return _limit(await ROUTER.call(str(tool or ""), arguments))
+    except Exception as e:
+        return _limit(f"Error: call_tool failed: {type(e).__name__}: {e}")
 
 
 def init_cli(argv: list[str]) -> None:
@@ -2067,20 +3055,50 @@ def init_cli(argv: list[str]) -> None:
     ap.add_argument("path", nargs="?", default="capy.yaml")
     ap.add_argument("--force", action="store_true", help="overwrite an existing file")
     args = ap.parse_args(argv)
-    if os.path.exists(args.path) and not args.force:
-        sys.exit(f"{args.path} already exists (use --force to overwrite)")
-    with open(args.path, "w", encoding="utf-8") as f:
+    path = os.path.expanduser(args.path)
+    if os.path.exists(path) and not args.force:
+        sys.exit(f"{path} already exists (use --force to overwrite)")
+    with open(path, "w", encoding="utf-8") as f:
         f.write(CAPY_YAML_TEMPLATE)
-    print(f"Created {os.path.abspath(args.path)}")
+    print(f"Created {os.path.abspath(path)}")
+
+
+def check_cli(argv: list[str]) -> None:
+    ap = argparse.ArgumentParser(prog="capybrowser check", description="Validate capy.yaml (and optionally connect)")
+    ap.add_argument("-c", "--config", default=None)
+    ap.add_argument("--connect", action="store_true", help="also connect to every server and count its tools")
+    args = ap.parse_args(argv)
+    try:
+        cfg = load_config(args.config)
+    except (ConfigError, OSError) as e:
+        sys.exit(f"config error: {mask_secrets(e)}")
+    print(f"config: {cfg['path'] or '(none - built-in browser only)'}")
+    opts = ", ".join(f"{k}={v}" for k, v in cfg["browser"].items() if v is not None)
+    print("browser: " + (opts or "defaults"))
+    for w in cfg["warnings"]:
+        print(f"warning: {w}")
+
+    async def run() -> None:
+        await ROUTER.update(cfg["mcp_servers"])
+        if args.connect:
+            await ROUTER._connect_all()
+        print(mask_secrets(ROUTER.list_text()))
+        await ROUTER.close_all()
+
+    asyncio.run(run())
+    kill_connector_processes()
 
 
 def main(argv: list[str] | None = None) -> None:
+    global CONFIG_STATE
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] == "init":
         return init_cli(argv[1:])
+    if argv and argv[0] == "check":
+        return check_cli(argv[1:])
     ap = argparse.ArgumentParser(prog="capybrowser",
                                  description="CapyBrowser: MCP server that drives the system Chromium-based browser over CDP. "
-                                             "'capybrowser init' creates a capy.yaml config.")
+                                             "Commands: 'capybrowser init' creates capy.yaml, 'capybrowser check' validates it.")
     ap.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     ap.add_argument("-c", "--config", default=None,
                     help="capy.yaml path (default: $CAPYBROWSER_CONFIG, ./capy.yaml, ~/.capy.yaml)")
@@ -2088,30 +3106,36 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--browser", default=None, help="path to the browser executable")
     ap.add_argument("--max-chars", type=int, default=None, help=f"max characters per tool response (default {MAX_CHARS})")
     ap.add_argument("--lang", default=None, help="browser UI/Accept-Language, e.g. ru-RU (default: system locale)")
+    ap.add_argument("--profile-dir", default=None, help="keep the browser profile in this folder (default: temporary)")
     ap.add_argument("--allow-local-files", action="store_true", default=None, help="allow open_url with file:// URLs")
     ap.add_argument("--log-level", default=os.environ.get("BROWSER_MCP_LOG", "WARNING"))
     args, _ = ap.parse_known_args(argv)
     logging.basicConfig(stream=sys.stderr, level=getattr(logging, str(args.log_level).upper(), logging.WARNING),
                         format="%(asctime)s %(name)s %(levelname)s %(message)s")
+    for handler in logging.getLogger().handlers:
+        handler.addFilter(_MaskingFilter())
+    if args.max_chars is not None and args.max_chars < 1:
+        sys.exit("--max-chars must be a positive number")
+    state = ConfigState(args.config, {"headed": args.headed, "browser": args.browser, "max_chars": args.max_chars,
+                                      "lang": args.lang, "profile_dir": args.profile_dir,
+                                      "allow_local_files": args.allow_local_files})
     try:
-        cfg = load_config(args.config)
-    except (OSError, ValueError) as e:
-        sys.exit(f"capy.yaml: {e}")
-    b = cfg["browser"]
-
-    def pick(flag: Any, key: str, default: Any) -> Any:
-        return flag if flag is not None else (b.get(key) if b.get(key) is not None else default)
-
-    setup(bool(pick(args.headed, "headed", False)), pick(args.browser, "path", None),
-          int(pick(args.max_chars, "max_chars", MAX_CHARS)), pick(args.lang, "lang", None),
-          bool(pick(args.allow_local_files, "allow_local_files", False)))
+        cfg = state.load_initial()
+    except (ConfigError, OSError) as e:
+        sys.exit(f"config error: {mask_secrets(e)}")
+    CONFIG_STATE = state
+    eff = state.effective()
+    setup(bool(eff["headed"]), eff["browser"], int(eff["max_chars"]), eff["lang"], bool(eff["allow_local_files"]),
+          eff["profile_dir"], eff["nav_timeout"])
+    ROUTER.warnings = list(cfg["warnings"])
+    ROUTER.connectors = {n: Connector(n, spec) for n, spec in cfg["mcp_servers"].items()}
     if cfg["path"]:
-        log.info("using config %s", cfg["path"])
+        log.info("using config %s (%d connectors)", cfg["path"], len(ROUTER.connectors))
+    for w in cfg["warnings"]:
+        log.warning("capy.yaml: %s", w)
     _install_signal_handlers()
-    server = build_server()
-    attach_hub(server, cfg["mcp_servers"])
     try:
-        server.run("stdio")
+        build_server().run("stdio")
     finally:
         cleanup_all()
 

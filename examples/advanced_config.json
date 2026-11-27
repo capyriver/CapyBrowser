@@ -4,9 +4,11 @@
       "command": "uvx",
       "args": [
         "--from", "git+https://github.com/capyriver/CapyBrowser", "capybrowser",
+        "--config", "/path/to/capy.yaml",
         "--headed",
         "--lang", "ru-RU",
         "--max-chars", "6000",
+        "--profile-dir", "/path/to/agent-profile",
         "--browser", "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
       ],
       "env": {

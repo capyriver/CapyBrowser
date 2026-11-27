@@ -71,13 +71,13 @@ The model answers with `type_text(3, "admin")`, `click(5)` — and a real browse
 |---|---|---|
 | Install | one link, `uvx` downloads everything | Node + Playwright + ~300 MB of bundled browsers |
 | Browser | the Chrome / Edge / Brave / Chromium you already have | a separate downloaded Chromium |
-| Code | one Python file, three small dependencies (`mcp`, `websockets`, `pyyaml`) | large frameworks |
+| Code | one Python file, four small dependencies (`mcp`, `websockets`, `pyyaml`, `httpx`) | large frameworks |
 | Output for the model | compact text + `[id]` list, hard size limit | raw accessibility trees or screenshots, often 10–50k tokens |
 | Small local models | designed and tested with a 4B model | usually need a large cloud model |
 
 ### <img src="assets/icons/capy-bolt.svg" width="40" height="40" alt="" align="absmiddle" /> Features
 
-- **6 tools:** `web_search`, `open_url`, `click`, `type_text`, `scroll`, `go_back`.
+- **6 browser tools:** `web_search`, `open_url`, `click`, `type_text`, `scroll`, `go_back` — plus 3 router tools (`list_connectors`, `find_tools`, `call_tool`) for every other MCP server you add in [capy.yaml](#capyyaml).
 - **Finds your browser automatically** on Windows, macOS and Linux (Chrome, Edge, Brave, Chromium, Vivaldi; stable, beta, dev, Canary, Snap, Flatpak).
 - **Lazy start:** the browser launches on the first tool call, on a free port, with a fresh temporary profile. Your normal profile, passwords and cookies are never touched.
 - **Works on modern sites:** real mouse and keyboard events through CDP, with verified fallbacks for React/Vue inputs, input masks (phones, cards, dates), overlays, custom checkboxes, shadow DOM, scroll containers and infinite feeds.
@@ -123,29 +123,47 @@ Restart the app and ask: *"Search the web for the latest Python release and open
 
 ### <img src="assets/icons/capy-orange.svg" width="40" height="40" alt="" align="absmiddle" /> capy.yaml — one file: browser + all your MCP servers
 
-`capy.yaml` is CapyBrowser's config file. Put your browser settings and **any other MCP servers** in it. Your AI app starts only CapyBrowser; CapyBrowser starts the servers from the file and gives the model their tools next to the browser tools. One file — instead of editing the config of every app.
+`capy.yaml` is CapyBrowser's config file: browser settings plus **any other MCP servers** ("connectors"). Your AI app starts only CapyBrowser, and the model gets a small, fixed set of tools: the 6 browser tools and 3 router tools that reach every connector. Fifty connector tools do not have to be squeezed into a small model's context.
 
 ```yaml
 browser:
-  lang: en-US  # browser language
-  headed: false  # true — show the browser window
-  max_chars: 3500  # max size of one page view
-mcp_servers:  # any MCP servers, same format as Claude Desktop
+  lang: en-US
+  max_chars: 3500
+  # profile_dir: ~/.capybrowser/profile
+mcp_servers:
   time:
     command: uvx
     args: ["mcp-server-time"]
-  filesystem:
+  files:
     command: npx
-    args: ["-y", "@modelcontextprotocol/server-filesystem", "C:/Users/me/Documents"]
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/folder"]
+  github:
+    type: streamable-http
+    url: https://api.githubcopilot.com/mcp/
+    auth:
+      type: bearer
+      token: ${GITHUB_TOKEN}
+  notion:
+    type: streamable-http
+    url: https://mcp.notion.com/mcp
+    auth:
+      type: oauth
+```
+
+```text
+list_connectors()                                   -> time, files, github, notion + status
+find_tools("create an issue")                       -> github.create_issue(owner: string, repo: string, title: string, body?: string) — …
+call_tool("github.create_issue", {"owner": "me", "repo": "app", "title": "Bug"})
 ```
 
 **1. Create the file** (or copy [`capy.yaml`](capy.yaml) from this repository):
 
 ```bash
 uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser init ~/.capy.yaml
+uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser check --connect   # validate and test the connectors
 ```
 
-**2. Point your app to it.** Add `--config` and the path to the `args`. If the file is `~/.capy.yaml`, it is found automatically and this step can be skipped.
+**2. Point your app to it.** Add `--config` and the path to the `args`. If the file is `~/.capy.yaml` (or `./capy.yaml`), it is found automatically and this step can be skipped.
 
 ```json
 {
@@ -153,20 +171,37 @@ uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser init ~/.capy
     "capybrowser": {
       "command": "uvx",
       "args": ["--from", "git+https://github.com/capyriver/CapyBrowser", "capybrowser",
-               "--config", "C:/Users/me/capy.yaml"]
+               "--config", "/path/to/capy.yaml"]
     }
   }
 }
 ```
 
-**3. Restart the app.** The model now has the 6 browser tools plus every tool of the servers in `mcp_servers`.
+**3. Restart the app once.** Later edits of `capy.yaml` are picked up automatically — no restart needed.
 
-- The file is looked up in this order: `--config`, the `CAPYBROWSER_CONFIG` environment variable, `./capy.yaml`, `~/.capy.yaml` (on Windows `~` is `C:\Users\<you>`).
-- `browser` options: `headed`, `lang`, `max_chars`, `allow_local_files`, `path`. Command-line flags override the file.
-- `mcp_servers` entries: `command`, `args`, `env`. `${VAR}` is replaced with an environment variable, so tokens and keys never have to be written into the file.
-- If two servers have a tool with the same name, the second one is exposed as `server__tool`.
-- A server that fails to start is skipped with a warning in the log; the browser keeps working.
-- Typos are not silently ignored: an unknown section or option stops the start with a clear message.
+| Router tool | What it does |
+|---|---|
+| `list_connectors` | Lists the connectors from `capy.yaml` and their status. |
+| `find_tools(query, connector?, limit?)` | Finds connector tools by meaning, in English or Russian ("email" = "почта", "задачи" = "tasks/notion", "код" = "github"…). Returns compact signatures such as `github.create_issue(repo: string, title: string, body?: string)`. |
+| `call_tool(tool, arguments)` | Runs `connector.tool`. `arguments` may be an object or a JSON string. Connects on first use, reconnects once if the server crashed, masks tokens in the answer and keeps it within `max_chars`. |
+
+**Connectors**
+
+- **Local (stdio):** `command`, `args`, `env`, `cwd` — the same format as `claude_desktop_config.json`.
+- **Remote:** `type: streamable-http` (or `sse`), `url`, optional `headers`.
+- **Auth:** `auth: {type: bearer, token: ${TOKEN}}`, or `auth: {type: oauth}` for OAuth 2.0 + PKCE: on first use your browser opens the provider's sign-in page; tokens are stored in `~/.capybrowser/oauth/` (file mode 600) and refreshed automatically. Optional: `client_id`, `client_secret`, `scopes`, `redirect_port` (default 33418).
+- **Also:** `description` (helps `find_tools`), `enabled: false`, `timeout` (seconds, default 120).
+
+**Secrets.** Write `${VAR}` instead of tokens. Values come from the environment or from a `.env` file next to `capy.yaml` (`KEY=value` lines; another name can be set with `env_file:`). `.env` is in `.gitignore`. Configured secrets and common token formats are masked in every connector answer and in the logs.
+
+**Good to know**
+
+- Lookup order: `--config`, `CAPYBROWSER_CONFIG`, `./capy.yaml`, `~/.capy.yaml`. Without a file, CapyBrowser runs the browser only.
+- `browser` options: `headed`, `browser` (path), `lang`, `max_chars`, `nav_timeout`, `profile_dir`, `allow_local_files`. Command-line flags win over the file. Browser launch options apply from the next page opened.
+- A broken edit does not break a running server: the last valid config stays active and `list_connectors` shows the error.
+- Typos are not silently ignored: unknown sections or options, wrong types and invalid YAML are reported with the exact field.
+- A connector that fails to start is reported by `list_connectors`; the browser and the other connectors keep working.
+- All connector processes are stopped together with CapyBrowser (exit, Ctrl+C, `SIGTERM`, `SIGHUP`, `SIGBREAK`).
 
 <a id="connect-to-your-app"></a>
 
@@ -282,6 +317,7 @@ After `uv tool install`, the MCP config can simply be `"command": "capybrowser"`
 | `type_text` | `element_id`, `text`, `submit=false` | Replaces the text of an input / textarea / editable area. For a `<select>`, picks the option by its text. `submit=true` presses Enter. |
 | `scroll` | `direction` | `down`, `up`, `top` or `bottom`. Scrolls the page or the main scroll container. |
 | `go_back` | — | Goes back in the browser history. |
+| `list_connectors` · `find_tools` · `call_tool` | see [capy.yaml](#capyyaml) | Reach the other MCP servers configured in `capy.yaml`. |
 
 Every tool returns the updated page, so the model always sees the result of its action. IDs are renumbered after every action, and errors come back as plain-text messages the model can recover from (for example *"element [12] not found — use an id from this list"* followed by the current page).
 
@@ -294,6 +330,7 @@ Every tool returns the updated page, so the model always sees the result of its 
 | `--browser PATH` | `BROWSER_MCP_PATH` | auto | Use a specific browser executable. |
 | `--max-chars N` | `BROWSER_MCP_MAX_CHARS` | `3500` | Maximum size of every tool response. Raise it for large-context models. |
 | `--lang ru-RU` | `BROWSER_MCP_LANG` | system locale | Browser UI language and `Accept-Language`. |
+| `--profile-dir PATH` | — | temporary | Keep cookies and logins in this folder between runs (`profile_dir` in capy.yaml). |
 | `--allow-local-files` | `BROWSER_MCP_ALLOW_FILE=1` | off | Allow `open_url` with `file://` URLs. |
 | — | `BROWSER_MCP_NAV_TIMEOUT` | `25` | Seconds to wait for a page to load. |
 | `--log-level` | `BROWSER_MCP_LOG` | `WARNING` | Log level (logs go to stderr). |
@@ -346,7 +383,7 @@ Google Chrome, Microsoft Edge, Brave, Chromium and Vivaldi (including beta/dev/C
 <details>
 <summary><b>Will it use or break my normal browser profile?</b></summary>
 
-No. Every session uses a fresh temporary profile in the system temp folder, deleted on exit. Your running browser is not affected — both can run at the same time.
+No. By default every session uses a fresh temporary profile in the system temp folder, deleted on exit. If you want logins to persist, set `profile_dir` in capy.yaml (or `--profile-dir`) to a separate folder — never to your everyday browser profile. Your running browser is not affected — both can run at the same time.
 </details>
 
 <details>
@@ -358,7 +395,7 @@ Yes: add `--headed` to the `args` and a normal browser window opens. On Linux th
 <details>
 <summary><b>Can the model log in to sites?</b></summary>
 
-It can type into login forms like a person would, which is handy for test accounts. Sessions do not persist between runs (the profile is temporary). Think twice before giving an AI real credentials.
+It can type into login forms like a person would, which is handy for test accounts. Sessions do not persist between runs unless you set `profile_dir` (by default the profile is temporary). Think twice before giving an AI real credentials.
 </details>
 
 <details>
@@ -416,7 +453,8 @@ Project layout:
 
 ```text
 browser_mcp.py          the whole server (also runnable as a single PEP 723 script)
-capy.yaml               example config: browser settings + extra MCP servers
+capy.yaml               example config: browser settings + connectors (other MCP servers)
+uv.lock                 locked dependency versions
 pyproject.toml          package metadata and the `capybrowser` command
 examples/               MCP configs for popular apps and an Ollama agent
 tests/                  pytest suite (runs on Windows, macOS and Linux in CI)
@@ -461,13 +499,13 @@ Password
 |---|---|---|
 | 安装 | 一个链接，`uvx` 自动下载一切 | Node + Playwright + 约 300 MB 的捆绑浏览器 |
 | 浏览器 | 使用你已安装的 Chrome / Edge / Brave / Chromium | 单独下载的 Chromium |
-| 代码 | 一个 Python 文件，三个轻量依赖（`mcp`、`websockets`、`pyyaml`） | 大型框架 |
+| 代码 | 一个 Python 文件，四个轻量依赖（`mcp`、`websockets`、`pyyaml`、`httpx`） | 大型框架 |
 | 给模型的输出 | 精简文本 + `[id]` 列表，严格长度限制 | 原始无障碍树或截图，常常 1–5 万 token |
 | 小型本地模型 | 专门设计并用 4B 模型测试 | 通常需要大型云端模型 |
 
 ### <img src="assets/icons/capy-bolt.svg" width="40" height="40" alt="" align="absmiddle" /> 功能
 
-- **6 个工具：** `web_search`、`open_url`、`click`、`type_text`、`scroll`、`go_back`。
+- **6 个浏览器工具：** `web_search`、`open_url`、`click`、`type_text`、`scroll`、`go_back`，以及用于 capy.yaml 中所有其他 MCP 服务器的 3 个路由工具（`list_connectors`、`find_tools`、`call_tool`）。
 - **自动查找浏览器**：支持 Windows、macOS、Linux（Chrome、Edge、Brave、Chromium、Vivaldi；稳定版、Beta、Dev、Canary、Snap、Flatpak）。
 - **按需启动**：首次调用工具时才启动浏览器，使用空闲端口和全新的临时配置文件，绝不触碰你平时的配置、密码和 Cookie。
 - **适配现代网站**：通过 CDP 发送真实的鼠标和键盘事件，并为 React/Vue 输入框、输入掩码（电话、银行卡、日期）、遮罩层、自定义复选框、Shadow DOM、滚动容器和无限加载列表提供经过验证的后备方案。
@@ -509,29 +547,47 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 ### <img src="assets/icons/capy-orange.svg" width="40" height="40" alt="" align="absmiddle" /> capy.yaml —— 一个文件：浏览器 + 你所有的 MCP 服务器
 
-`capy.yaml` 是 CapyBrowser 的配置文件。把浏览器设置和**任意其他 MCP 服务器**写进去。你的 AI 应用只需要启动 CapyBrowser，CapyBrowser 会启动文件中的服务器，并把它们的工具和浏览器工具一起提供给模型。一个文件，而不必修改每个应用的配置。
+`capy.yaml` 是 CapyBrowser 的配置文件：浏览器设置以及**任意其他 MCP 服务器**（"连接器"）。你的 AI 应用只需启动 CapyBrowser，模型得到的是一组固定且精简的工具：6 个浏览器工具和 3 个路由工具，通过它们可以使用所有连接器。几十个连接器工具不必全部塞进小模型的上下文。
 
 ```yaml
 browser:
-  lang: zh-CN  # 浏览器语言
-  headed: false  # true —— 显示浏览器窗口
-  max_chars: 3500  # 单个页面视图的最大长度
-mcp_servers:  # 任意 MCP 服务器，格式与 Claude Desktop 相同
+  lang: zh-CN
+  max_chars: 3500
+  # profile_dir: ~/.capybrowser/profile
+mcp_servers:
   time:
     command: uvx
     args: ["mcp-server-time"]
-  filesystem:
+  files:
     command: npx
-    args: ["-y", "@modelcontextprotocol/server-filesystem", "C:/Users/me/Documents"]
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/folder"]
+  github:
+    type: streamable-http
+    url: https://api.githubcopilot.com/mcp/
+    auth:
+      type: bearer
+      token: ${GITHUB_TOKEN}
+  notion:
+    type: streamable-http
+    url: https://mcp.notion.com/mcp
+    auth:
+      type: oauth
+```
+
+```text
+list_connectors()                                   -> time, files, github, notion + status
+find_tools("create an issue")                       -> github.create_issue(owner: string, repo: string, title: string, body?: string) — …
+call_tool("github.create_issue", {"owner": "me", "repo": "app", "title": "Bug"})
 ```
 
 **1. 创建文件**（或复制本仓库中的 [`capy.yaml`](capy.yaml)）：
 
 ```bash
 uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser init ~/.capy.yaml
+uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser check --connect   # validate and test the connectors
 ```
 
-**2. 让应用使用它。** 在 `args` 中加入 `--config` 和文件路径。如果文件位于 `~/.capy.yaml`，会被自动找到，可以跳过这一步。
+**2. 让应用使用它。** 在 `args` 中加入 `--config` 和文件路径。如果文件是 `~/.capy.yaml`（或 `./capy.yaml`），会被自动找到，可以跳过此步。
 
 ```json
 {
@@ -539,20 +595,37 @@ uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser init ~/.capy
     "capybrowser": {
       "command": "uvx",
       "args": ["--from", "git+https://github.com/capyriver/CapyBrowser", "capybrowser",
-               "--config", "C:/Users/me/capy.yaml"]
+               "--config", "/path/to/capy.yaml"]
     }
   }
 }
 ```
 
-**3. 重启应用。** 模型将拥有 6 个浏览器工具，以及 `mcp_servers` 中所有服务器的工具。
+**3. 重启一次应用。** 之后对 `capy.yaml` 的修改会被自动加载，无需重启。
 
-- 查找顺序：`--config`、环境变量 `CAPYBROWSER_CONFIG`、`./capy.yaml`、`~/.capy.yaml`（Windows 上 `~` 即 `C:\Users\<用户名>`）。
-- `browser` 选项：`headed`、`lang`、`max_chars`、`allow_local_files`、`path`。命令行参数优先于文件。
-- `mcp_servers` 每项包含 `command`、`args`、`env`。`${VAR}` 会被替换为环境变量，令牌和密钥无需写进文件。
-- 如果两个服务器有同名工具，第二个会以 `服务器名__工具名` 的形式提供。
-- 无法启动的服务器会被跳过并在日志中警告，浏览器照常工作。
-- 拼写错误不会被悄悄忽略：未知的分区或选项会以清晰的提示阻止启动。
+| 路由工具 | 作用 |
+|---|---|
+| `list_connectors` | 列出 `capy.yaml` 中的连接器及其状态。 |
+| `find_tools(query, connector?, limit?)` | 按含义查找连接器工具，支持英文和俄文（如 email/почта、tasks/задачи、github/код）。返回精简签名，例如 `github.create_issue(repo: string, title: string, body?: string)`。 |
+| `call_tool(tool, arguments)` | 运行 `连接器.工具`。`arguments` 可以是对象或 JSON 字符串。首次使用时连接，服务器崩溃时自动重连一次，屏蔽回答中的令牌，并保证不超过 `max_chars`。 |
+
+**连接器**
+
+- **本地（stdio）：** `command`、`args`、`env`、`cwd`，格式与 `claude_desktop_config.json` 相同。
+- **远程：** `type: streamable-http`（或 `sse`）、`url`，可选 `headers`。
+- **认证：** `auth: {type: bearer, token: ${TOKEN}}`，或 `auth: {type: oauth}`（OAuth 2.0 + PKCE）：首次使用时会在浏览器中打开登录页，令牌保存在 `~/.capybrowser/oauth/`（权限 600）并自动刷新。可选：`client_id`、`client_secret`、`scopes`、`redirect_port`（默认 33418）。
+- **其他：** `description`（帮助 `find_tools`）、`enabled: false`、`timeout`（秒，默认 120）。
+
+**密钥。** 用 `${VAR}` 代替令牌。取值来自环境变量或 `capy.yaml` 旁边的 `.env` 文件（`KEY=value`；可用 `env_file:` 指定其他文件名）。`.env` 已在 `.gitignore` 中。配置中的密钥和常见令牌格式会在所有连接器回答和日志中被屏蔽。
+
+**须知**
+
+- 查找顺序：`--config`、`CAPYBROWSER_CONFIG`、`./capy.yaml`、`~/.capy.yaml`。没有文件时只运行浏览器。
+- `browser` 选项：`headed`、`browser`（路径）、`lang`、`max_chars`、`nav_timeout`、`profile_dir`、`allow_local_files`。命令行参数优先。浏览器启动选项从下一次打开页面时生效。
+- 错误的修改不会影响正在运行的服务器：继续使用上一个有效配置，`list_connectors` 会显示错误。
+- 拼写错误不会被忽略：未知的分区或选项、错误的类型和无效的 YAML 都会准确指出字段。
+- 无法启动的连接器会在 `list_connectors` 中显示，浏览器和其他连接器照常工作。
+- 所有连接器进程都会随 CapyBrowser 一起结束（退出、Ctrl+C、`SIGTERM`、`SIGHUP`、`SIGBREAK`）。
 
 ### <img src="assets/icons/capy-plug.svg" width="40" height="40" alt="" align="absmiddle" /> 接入应用
 
@@ -590,6 +663,7 @@ uv run https://raw.githubusercontent.com/capyriver/CapyBrowser/main/browser_mcp.
 | `type_text` | `element_id`、`text`、`submit=false` | 替换输入框/文本区域/可编辑区域的内容；对 `<select>` 按文本选择选项；`submit=true` 会按回车。 |
 | `scroll` | `direction` | `down`、`up`、`top`、`bottom`。滚动页面或主滚动容器。 |
 | `go_back` | — | 浏览器后退。 |
+| `list_connectors` · `find_tools` · `call_tool` | 见 capy.yaml 一节 | 使用 `capy.yaml` 中配置的其他 MCP 服务器。 |
 
 每个工具都会返回更新后的页面。每次操作后 ID 会重新编号；错误以纯文本返回，模型可以据此继续。
 
@@ -602,6 +676,7 @@ uv run https://raw.githubusercontent.com/capyriver/CapyBrowser/main/browser_mcp.
 | `--browser PATH` | `BROWSER_MCP_PATH` | 自动 | 指定浏览器可执行文件。 |
 | `--max-chars N` | `BROWSER_MCP_MAX_CHARS` | `3500` | 每个工具响应的最大长度。 |
 | `--lang zh-CN` | `BROWSER_MCP_LANG` | 系统区域设置 | 浏览器界面语言和 `Accept-Language`。 |
+| `--profile-dir PATH` | — | 临时 | 在此文件夹中保留 Cookie 和登录状态（capy.yaml 中的 `profile_dir`）。 |
 | `--allow-local-files` | `BROWSER_MCP_ALLOW_FILE=1` | 关 | 允许打开 `file://` 链接。 |
 | — | `BROWSER_MCP_NAV_TIMEOUT` | `25` | 页面加载等待秒数。 |
 | `--log-level` | `BROWSER_MCP_LOG` | `WARNING` | 日志级别（输出到 stderr）。 |
@@ -635,7 +710,7 @@ Chrome、Edge、Brave、Chromium、Vivaldi（含 Beta/Dev/Canary、Snap、Flatpa
 <details>
 <summary><b>会影响我平时使用的浏览器配置吗？</b></summary>
 
-不会。每次会话都使用系统临时目录中的全新配置，退出时删除。你正在使用的浏览器不受影响，两者可以同时运行。
+不会。默认情况下每次会话都使用系统临时目录中的全新配置，退出时删除。如果希望保留登录状态，请在 capy.yaml 中设置 `profile_dir`（或 `--profile-dir`）为一个单独的文件夹，不要指向你日常使用的浏览器配置。你正在使用的浏览器不受影响，两者可以同时运行。
 </details>
 
 <details>
@@ -718,13 +793,13 @@ Password
 |---|---|---|
 | Установка | одна ссылка, `uvx` скачивает всё сам | Node + Playwright + ~300 МБ своих браузеров |
 | Браузер | ваш уже установленный Chrome / Edge / Brave / Chromium | отдельно скачанный Chromium |
-| Код | один Python-файл, три небольшие зависимости (`mcp`, `websockets`, `pyyaml`) | большие фреймворки |
+| Код | один Python-файл, четыре небольшие зависимости (`mcp`, `websockets`, `pyyaml`, `httpx`) | большие фреймворки |
 | Что видит модель | компактный текст + список `[id]`, жёсткий лимит размера | сырое дерево доступности или скриншоты, часто 10–50 тыс. токенов |
 | Маленькие локальные модели | сделан и протестирован на 4B-модели | обычно нужна большая облачная модель |
 
 ### <img src="assets/icons/capy-bolt.svg" width="40" height="40" alt="" align="absmiddle" /> Возможности
 
-- **6 инструментов:** `web_search`, `open_url`, `click`, `type_text`, `scroll`, `go_back`.
+- **6 инструментов браузера:** `web_search`, `open_url`, `click`, `type_text`, `scroll`, `go_back` — плюс 3 инструмента-роутера (`list_connectors`, `find_tools`, `call_tool`) для всех остальных MCP-серверов из capy.yaml.
 - **Сам находит браузер** на Windows, macOS и Linux (Chrome, Edge, Brave, Chromium, Vivaldi; stable, beta, dev, Canary, Snap, Flatpak).
 - **Ленивый запуск:** браузер стартует при первом вызове инструмента, на свободном порту, с новым временным профилем. Ваш обычный профиль, пароли и cookies не затрагиваются.
 - **Работает на современных сайтах:** настоящие события мыши и клавиатуры через CDP с проверенными запасными вариантами для полей React/Vue, масок ввода (телефоны, карты, даты), перекрывающих слоёв, кастомных чекбоксов, shadow DOM, контейнеров со своим скроллом и бесконечных лент.
@@ -766,29 +841,47 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 ### <img src="assets/icons/capy-orange.svg" width="40" height="40" alt="" align="absmiddle" /> capy.yaml — один файл: браузер + все ваши MCP-серверы
 
-`capy.yaml` — это файл настроек CapyBrowser. В нём настройки браузера и **любые другие MCP-серверы**. Ваше AI-приложение запускает только CapyBrowser, а CapyBrowser сам запускает серверы из файла и отдаёт модели их инструменты вместе с браузерными. Один файл — вместо того чтобы править конфиг каждого приложения.
+`capy.yaml` — файл настроек CapyBrowser: параметры браузера плюс **любые другие MCP-серверы** («коннекторы»). Приложение запускает только CapyBrowser, а модель получает маленький постоянный набор инструментов: 6 браузерных и 3 инструмента-роутера, через которые доступны все коннекторы. Не нужно запихивать десятки схем инструментов в контекст маленькой модели.
 
 ```yaml
 browser:
-  lang: ru-RU  # язык браузера
-  headed: false  # true — показывать окно браузера
-  max_chars: 3500  # максимальный размер одной страницы для модели
-mcp_servers:  # любые MCP-серверы, формат как у Claude Desktop
+  lang: ru-RU
+  max_chars: 3500
+  # profile_dir: ~/.capybrowser/profile
+mcp_servers:
   time:
     command: uvx
     args: ["mcp-server-time"]
-  filesystem:
+  files:
     command: npx
-    args: ["-y", "@modelcontextprotocol/server-filesystem", "C:/Users/me/Documents"]
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/folder"]
+  github:
+    type: streamable-http
+    url: https://api.githubcopilot.com/mcp/
+    auth:
+      type: bearer
+      token: ${GITHUB_TOKEN}
+  notion:
+    type: streamable-http
+    url: https://mcp.notion.com/mcp
+    auth:
+      type: oauth
+```
+
+```text
+list_connectors()                                   -> time, files, github, notion + status
+find_tools("create an issue")                       -> github.create_issue(owner: string, repo: string, title: string, body?: string) — …
+call_tool("github.create_issue", {"owner": "me", "repo": "app", "title": "Bug"})
 ```
 
 **1. Создайте файл** (или скопируйте [`capy.yaml`](capy.yaml) из этого репозитория):
 
 ```bash
 uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser init ~/.capy.yaml
+uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser check --connect   # validate and test the connectors
 ```
 
-**2. Укажите его приложению.** Добавьте в `args` флаг `--config` и путь к файлу. Если файл лежит в `~/.capy.yaml`, он находится автоматически — этот шаг можно пропустить.
+**2. Укажите его приложению.** Добавьте в `args` флаг `--config` и путь к файлу. Если файл лежит в `~/.capy.yaml` (или `./capy.yaml`), он находится автоматически — шаг можно пропустить.
 
 ```json
 {
@@ -796,20 +889,37 @@ uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser init ~/.capy
     "capybrowser": {
       "command": "uvx",
       "args": ["--from", "git+https://github.com/capyriver/CapyBrowser", "capybrowser",
-               "--config", "C:/Users/me/capy.yaml"]
+               "--config", "/path/to/capy.yaml"]
     }
   }
 }
 ```
 
-**3. Перезапустите приложение.** Теперь у модели 6 инструментов браузера плюс все инструменты серверов из `mcp_servers`.
+**3. Перезапустите приложение один раз.** Дальше правки `capy.yaml` подхватываются сами, без перезапуска.
 
-- Где ищется файл, по порядку: `--config`, переменная окружения `CAPYBROWSER_CONFIG`, `./capy.yaml`, `~/.capy.yaml` (в Windows `~` — это `C:\Users\<имя>`).
-- Параметры `browser`: `headed`, `lang`, `max_chars`, `allow_local_files`, `path`. Флаги командной строки важнее файла.
-- У каждого сервера в `mcp_servers`: `command`, `args`, `env`. `${VAR}` заменяется переменной окружения — токены и ключи не нужно писать в файл.
-- Если у двух серверов инструменты с одинаковым именем, второй будет доступен как `сервер__инструмент`.
-- Сервер, который не запустился, пропускается с предупреждением в логе — браузер продолжает работать.
-- Опечатки не игнорируются молча: неизвестный раздел или параметр останавливает запуск с понятным сообщением.
+| Инструмент-роутер | Что делает |
+|---|---|
+| `list_connectors` | Список коннекторов из `capy.yaml` и их состояние. |
+| `find_tools(query, connector?, limit?)` | Ищет инструменты коннекторов по смыслу, на русском и английском («почта» = email/gmail, «задачи» = tasks/notion, «код» = github…). Возвращает компактные сигнатуры вида `github.create_issue(repo: string, title: string, body?: string)`. |
+| `call_tool(tool, arguments)` | Запускает `коннектор.инструмент`. `arguments` — объект или JSON-строка. Подключается при первом обращении, один раз переподключается, если сервер упал, скрывает токены в ответе и укладывает его в `max_chars`. |
+
+**Коннекторы**
+
+- **Локальные (stdio):** `command`, `args`, `env`, `cwd` — тот же формат, что `claude_desktop_config.json`.
+- **Удалённые:** `type: streamable-http` (или `sse`), `url`, необязательные `headers`.
+- **Авторизация:** `auth: {type: bearer, token: ${TOKEN}}` или `auth: {type: oauth}` для OAuth 2.0 + PKCE. При первом обращении в браузере откроется страница входа сервиса. Токены хранятся в `~/.capybrowser/oauth/` (права 600) и обновляются автоматически. Необязательно: `client_id`, `client_secret`, `scopes`, `redirect_port` (по умолчанию 33418).
+- **Ещё:** `description` (помогает `find_tools`), `enabled: false`, `timeout` (секунды, по умолчанию 120).
+
+**Секреты.** Вместо токенов пишите `${VAR}`. Значения берутся из переменных окружения или из файла `.env` рядом с `capy.yaml` (строки `KEY=value`; другое имя можно задать через `env_file:`). `.env` есть в `.gitignore`. Секреты из конфига и типичные форматы токенов маскируются во всех ответах коннекторов и в логах.
+
+**Полезно знать**
+
+- Порядок поиска файла: `--config`, `CAPYBROWSER_CONFIG`, `./capy.yaml`, `~/.capy.yaml`. Без файла CapyBrowser работает только как браузер.
+- Параметры `browser`: `headed`, `browser` (путь), `lang`, `max_chars`, `nav_timeout`, `profile_dir`, `allow_local_files`. Флаги командной строки важнее файла. Параметры запуска браузера применяются со следующего открытия страницы.
+- Ошибка в правке не ломает работающий сервер: остаётся последний рабочий конфиг, а `list_connectors` показывает ошибку.
+- Опечатки не игнорируются молча: неизвестные разделы и параметры, неверные типы и битый YAML сообщаются с точным указанием поля.
+- Коннектор, который не запустился, виден в `list_connectors`; браузер и остальные коннекторы продолжают работать.
+- Все процессы коннекторов завершаются вместе с CapyBrowser (выход, Ctrl+C, `SIGTERM`, `SIGHUP`, `SIGBREAK`).
 
 ### <img src="assets/icons/capy-plug.svg" width="40" height="40" alt="" align="absmiddle" /> Подключение к приложениям
 
@@ -923,6 +1033,7 @@ uv run browser_mcp.py
 | `type_text` | `element_id`, `text`, `submit=false` | Заменяет текст в поле / textarea / редактируемой области. Для `<select>` выбирает вариант по тексту. `submit=true` нажимает Enter. |
 | `scroll` | `direction` | `down`, `up`, `top` или `bottom`. Листает страницу или её основной прокручиваемый контейнер. |
 | `go_back` | — | Возвращается назад по истории. |
+| `list_connectors` · `find_tools` · `call_tool` | см. раздел capy.yaml | Доступ к остальным MCP-серверам из `capy.yaml`. |
 
 Каждый инструмент возвращает обновлённую страницу, так что модель сразу видит результат своего действия. Номера `[id]` пересчитываются после каждого действия, а ошибки приходят понятным текстом, с которым модель может продолжить (например, *«элемент [12] не найден — используйте id из этого списка»* и текущая страница).
 
@@ -935,6 +1046,7 @@ uv run browser_mcp.py
 | `--browser PATH` | `BROWSER_MCP_PATH` | авто | Конкретный исполняемый файл браузера. |
 | `--max-chars N` | `BROWSER_MCP_MAX_CHARS` | `3500` | Максимальный размер ответа любого инструмента. Для моделей с большим контекстом можно увеличить. |
 | `--lang ru-RU` | `BROWSER_MCP_LANG` | язык системы | Язык интерфейса браузера и `Accept-Language`. |
+| `--profile-dir PATH` | — | временный | Хранить cookies и входы в аккаунты в этой папке между запусками (`profile_dir` в capy.yaml). |
 | `--allow-local-files` | `BROWSER_MCP_ALLOW_FILE=1` | выкл. | Разрешить `open_url` с адресами `file://`. |
 | — | `BROWSER_MCP_NAV_TIMEOUT` | `25` | Сколько секунд ждать загрузки страницы. |
 | `--log-level` | `BROWSER_MCP_LOG` | `WARNING` | Уровень логов (пишутся в stderr). |
@@ -985,7 +1097,7 @@ Google Chrome, Microsoft Edge, Brave, Chromium и Vivaldi (включая beta/d
 <details>
 <summary><b>Он не испортит мой обычный профиль браузера?</b></summary>
 
-Нет. Каждая сессия использует новый временный профиль во временной папке системы, который удаляется при выходе. Ваш открытый браузер не затрагивается — они могут работать одновременно.
+Нет. По умолчанию каждая сессия использует новый временный профиль во временной папке системы, который удаляется при выходе. Если нужно, чтобы входы в аккаунты сохранялись, задайте `profile_dir` в capy.yaml (или `--profile-dir`) — отдельную папку, а не профиль вашего обычного браузера. Ваш открытый браузер не затрагивается — они могут работать одновременно.
 </details>
 
 <details>
@@ -997,7 +1109,7 @@ Google Chrome, Microsoft Edge, Brave, Chromium и Vivaldi (включая beta/d
 <details>
 <summary><b>Может ли модель входить в аккаунты?</b></summary>
 
-Она может вводить логин и пароль в формы, как человек, — удобно для тестовых аккаунтов. Между запусками сессии не сохраняются (профиль временный). Хорошо подумайте, прежде чем давать ИИ настоящие пароли.
+Она может вводить логин и пароль в формы, как человек, — удобно для тестовых аккаунтов. Между запусками сессии не сохраняются, если не задан `profile_dir` (по умолчанию профиль временный). Хорошо подумайте, прежде чем давать ИИ настоящие пароли.
 </details>
 
 <details>
@@ -1089,13 +1201,13 @@ Password
 |---|---|---|
 | Орнату | бір сілтеме, `uvx` бәрін өзі жүктейді | Node + Playwright + ~300 МБ қосымша браузерлер |
 | Браузер | компьютеріңізде бар Chrome / Edge / Brave / Chromium | бөлек жүктелген Chromium |
-| Код | бір Python файлы, үш шағын тәуелділік (`mcp`, `websockets`, `pyyaml`) | үлкен фреймворктер |
+| Код | бір Python файлы, төрт шағын тәуелділік (`mcp`, `websockets`, `pyyaml`, `httpx`) | үлкен фреймворктер |
 | Модельге берілетін нәтиже | ықшам мәтін + `[id]` тізімі, қатаң көлем шегі | шикі қолжетімділік ағашы не скриншоттар, жиі 10–50 мың токен |
 | Шағын жергілікті модельдер | 4B модельмен жасалып, тексерілген | әдетте үлкен бұлттық модель керек |
 
 ### <img src="assets/icons/capy-bolt.svg" width="40" height="40" alt="" align="absmiddle" /> Мүмкіндіктері
 
-- **6 құрал:** `web_search`, `open_url`, `click`, `type_text`, `scroll`, `go_back`.
+- **Браузердің 6 құралы:** `web_search`, `open_url`, `click`, `type_text`, `scroll`, `go_back` — және capy.yaml-дағы басқа MCP серверлері үшін 3 бағыттаушы құрал (`list_connectors`, `find_tools`, `call_tool`).
 - **Браузерді өзі табады** — Windows, macOS және Linux жүйелерінде (Chrome, Edge, Brave, Chromium, Vivaldi; stable, beta, dev, Canary, Snap, Flatpak).
 - **Кейінге қалдырылған іске қосу:** браузер құрал алғаш шақырылғанда бос портта, жаңа уақытша профильмен ашылады. Әдеттегі профиліңізге, құпиясөздер мен cookie-ге тиіспейді.
 - **Заманауи сайттарда жұмыс істейді:** CDP арқылы нағыз тінтуір мен пернетақта оқиғалары, ал React/Vue өрістеріне, енгізу маскаларына (телефон, карта, күн), үстіңгі қабаттарға, арнайы белгі құсбелгілеріне, shadow DOM-ға, өз айналдыруы бар контейнерлерге және шексіз лентаға тексерілген қосалқы тәсілдер бар.
@@ -1137,29 +1249,47 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 ### <img src="assets/icons/capy-orange.svg" width="40" height="40" alt="" align="absmiddle" /> capy.yaml — бір файл: браузер + барлық MCP серверлеріңіз
 
-`capy.yaml` — CapyBrowser-дің баптау файлы. Онда браузер баптаулары және **кез келген басқа MCP серверлері** жазылады. AI қолданбаңыз тек CapyBrowser-ді іске қосады, ал CapyBrowser файлдағы серверлерді өзі іске қосып, олардың құралдарын браузер құралдарымен бірге модельге береді. Әр қолданбаның баптауын өзгертудің орнына — бір файл.
+`capy.yaml` — CapyBrowser баптау файлы: браузер параметрлері және **кез келген басқа MCP серверлері** («коннекторлар»). Қолданба тек CapyBrowser-ді іске қосады, ал модель шағын әрі тұрақты құралдар жинағын алады: браузердің 6 құралы және барлық коннекторларға жол ашатын 3 бағыттаушы құрал. Ондаған құрал сұлбасын шағын модельдің контексіне тығудың қажеті жоқ.
 
 ```yaml
 browser:
-  lang: kk-KZ  # браузер тілі
-  headed: false  # true — браузер терезесін көрсету
-  max_chars: 3500  # модельге берілетін бір беттің ең үлкен көлемі
-mcp_servers:  # кез келген MCP серверлері, Claude Desktop форматында
+  lang: kk-KZ
+  max_chars: 3500
+  # profile_dir: ~/.capybrowser/profile
+mcp_servers:
   time:
     command: uvx
     args: ["mcp-server-time"]
-  filesystem:
+  files:
     command: npx
-    args: ["-y", "@modelcontextprotocol/server-filesystem", "C:/Users/me/Documents"]
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/folder"]
+  github:
+    type: streamable-http
+    url: https://api.githubcopilot.com/mcp/
+    auth:
+      type: bearer
+      token: ${GITHUB_TOKEN}
+  notion:
+    type: streamable-http
+    url: https://mcp.notion.com/mcp
+    auth:
+      type: oauth
+```
+
+```text
+list_connectors()                                   -> time, files, github, notion + status
+find_tools("create an issue")                       -> github.create_issue(owner: string, repo: string, title: string, body?: string) — …
+call_tool("github.create_issue", {"owner": "me", "repo": "app", "title": "Bug"})
 ```
 
 **1. Файлды жасаңыз** (немесе осы репозиторийдегі [`capy.yaml`](capy.yaml) файлын көшіріңіз):
 
 ```bash
 uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser init ~/.capy.yaml
+uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser check --connect   # validate and test the connectors
 ```
 
-**2. Оны қолданбаға көрсетіңіз.** `args` ішіне `--config` жалаушасы мен файл жолын қосыңыз. Файл `~/.capy.yaml` болса, ол автоматты түрде табылады — бұл қадамды өткізіп жіберуге болады.
+**2. Оны қолданбаға көрсетіңіз.** `args` ішіне `--config` жалаушасы мен файл жолын қосыңыз. Файл `~/.capy.yaml` (немесе `./capy.yaml`) болса, ол автоматты түрде табылады — бұл қадамды өткізіп жіберуге болады.
 
 ```json
 {
@@ -1167,20 +1297,37 @@ uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser init ~/.capy
     "capybrowser": {
       "command": "uvx",
       "args": ["--from", "git+https://github.com/capyriver/CapyBrowser", "capybrowser",
-               "--config", "C:/Users/me/capy.yaml"]
+               "--config", "/path/to/capy.yaml"]
     }
   }
 }
 ```
 
-**3. Қолданбаны қайта іске қосыңыз.** Енді модельде браузердің 6 құралы және `mcp_servers` ішіндегі барлық серверлердің құралдары бар.
+**3. Қолданбаны бір рет қайта іске қосыңыз.** Кейін `capy.yaml` өзгерістері қайта іске қоспай-ақ өздігінен қабылданады.
 
-- Файл осы ретпен ізделеді: `--config`, `CAPYBROWSER_CONFIG` орта айнымалысы, `./capy.yaml`, `~/.capy.yaml` (Windows-та `~` — `C:\Users\<атыңыз>`).
-- `browser` параметрлері: `headed`, `lang`, `max_chars`, `allow_local_files`, `path`. Командалық жол жалаушалары файлдан басым.
-- `mcp_servers` ішіндегі әр серверде: `command`, `args`, `env`. `${VAR}` орта айнымалысымен алмастырылады — токендер мен кілттерді файлға жазудың қажеті жоқ.
-- Екі серверде аттас құрал болса, екіншісі `сервер__құрал` түрінде қолжетімді болады.
-- Іске қосылмаған сервер журналда ескертумен өткізіліп жіберіледі — браузер жұмысын жалғастырады.
-- Қате жазылған баптаулар үнсіз еленбей қалмайды: белгісіз бөлім не параметр түсінікті хабармен іске қосуды тоқтатады.
+| Бағыттаушы құрал | Не істейді |
+|---|---|
+| `list_connectors` | `capy.yaml` ішіндегі коннекторлар тізімі және олардың күйі. |
+| `find_tools(query, connector?, limit?)` | Коннектор құралдарын мағынасы бойынша ағылшын және орыс тілдерінде іздейді (email/почта, tasks/задачи, github/код…). `github.create_issue(repo: string, title: string, body?: string)` сияқты ықшам сигнатуралар қайтарады. |
+| `call_tool(tool, arguments)` | `коннектор.құрал` іске қосады. `arguments` — объект немесе JSON жолы. Алғаш қолданғанда қосылады, сервер құласа бір рет қайта қосылады, жауаптағы токендерді жасырады және оны `max_chars` шегінде ұстайды. |
+
+**Коннекторлар**
+
+- **Жергілікті (stdio):** `command`, `args`, `env`, `cwd` — `claude_desktop_config.json` форматымен бірдей.
+- **Қашықтағы:** `type: streamable-http` (немесе `sse`), `url`, қосымша `headers`.
+- **Авторизация:** `auth: {type: bearer, token: ${TOKEN}}` немесе OAuth 2.0 + PKCE үшін `auth: {type: oauth}`. Алғаш қолданғанда браузерде қызметтің кіру беті ашылады. Токендер `~/.capybrowser/oauth/` қалтасында (рұқсат 600) сақталып, автоматты түрде жаңартылады. Қосымша: `client_id`, `client_secret`, `scopes`, `redirect_port` (әдепкі 33418).
+- **Тағы:** `description` (`find_tools`-қа көмектеседі), `enabled: false`, `timeout` (секунд, әдепкі 120).
+
+**Құпиялар.** Токендердің орнына `${VAR}` жазыңыз. Мәндер орта айнымалыларынан немесе `capy.yaml` жанындағы `.env` файлынан алынады (`KEY=value` жолдары; басқа атауды `env_file:` арқылы беруге болады). `.env` файлы `.gitignore` ішінде. Баптаудағы құпиялар мен кең тараған токен форматтары коннекторлардың барлық жауаптарында және журналдарда жасырылады.
+
+**Білген жөн**
+
+- Файлды іздеу реті: `--config`, `CAPYBROWSER_CONFIG`, `./capy.yaml`, `~/.capy.yaml`. Файл болмаса, CapyBrowser тек браузер ретінде жұмыс істейді.
+- `browser` параметрлері: `headed`, `browser` (жол), `lang`, `max_chars`, `nav_timeout`, `profile_dir`, `allow_local_files`. Командалық жол жалаушалары файлдан басым. Браузерді іске қосу параметрлері келесі бет ашылғанда күшіне енеді.
+- Қате түзету жұмыс істеп тұрған серверді бұзбайды: соңғы дұрыс баптау қала береді, ал `list_connectors` қатені көрсетеді.
+- Қате жазулар үнсіз еленбей қалмайды: белгісіз бөлімдер мен параметрлер, қате типтер және жарамсыз YAML нақты өріспен хабарланады.
+- Іске қосылмаған коннектор `list_connectors` ішінде көрінеді; браузер мен басқа коннекторлар жұмысын жалғастырады.
+- Коннекторлардың барлық процестері CapyBrowser-мен бірге тоқтатылады (шығу, Ctrl+C, `SIGTERM`, `SIGHUP`, `SIGBREAK`).
 
 ### <img src="assets/icons/capy-plug.svg" width="40" height="40" alt="" align="absmiddle" /> Қолданбаларға қосу
 
@@ -1218,6 +1365,7 @@ uv run https://raw.githubusercontent.com/capyriver/CapyBrowser/main/browser_mcp.
 | `type_text` | `element_id`, `text`, `submit=false` | Өріс / textarea / өңделетін аймақтағы мәтінді ауыстырады. `<select>` үшін нұсқаны мәтіні бойынша таңдайды. `submit=true` Enter басады. |
 | `scroll` | `direction` | `down`, `up`, `top` немесе `bottom`. Бетті не оның негізгі айналдыру контейнерін айналдырады. |
 | `go_back` | — | Тарих бойынша артқа қайтады. |
+| `list_connectors` · `find_tools` · `call_tool` | capy.yaml бөлімін қараңыз | `capy.yaml`-дағы басқа MCP серверлеріне қол жеткізу. |
 
 Әр құрал жаңартылған бетті қайтарады. `[id]` нөмірлері әр әрекеттен кейін қайта беріледі; қателер модель жалғастыра алатын қарапайым мәтінмен келеді.
 
@@ -1230,6 +1378,7 @@ uv run https://raw.githubusercontent.com/capyriver/CapyBrowser/main/browser_mcp.
 | `--browser PATH` | `BROWSER_MCP_PATH` | авто | Нақты браузер файлы. |
 | `--max-chars N` | `BROWSER_MCP_MAX_CHARS` | `3500` | Кез келген құрал жауабының ең үлкен көлемі. |
 | `--lang kk-KZ` | `BROWSER_MCP_LANG` | жүйе тілі | Браузер интерфейсінің тілі және `Accept-Language`. |
+| `--profile-dir PATH` | — | уақытша | Cookie мен аккаунтқа кірулерді осы қалтада сақтау (capy.yaml ішіндегі `profile_dir`). |
 | `--allow-local-files` | `BROWSER_MCP_ALLOW_FILE=1` | өшірулі | `file://` мекенжайларын ашуға рұқсат беру. |
 | — | `BROWSER_MCP_NAV_TIMEOUT` | `25` | Беттің жүктелуін қанша секунд күту. |
 | `--log-level` | `BROWSER_MCP_LOG` | `WARNING` | Лог деңгейі (stderr-ге жазылады). |
@@ -1263,7 +1412,7 @@ Chrome, Edge, Brave, Chromium, Vivaldi (beta/dev/Canary, Snap, Flatpak қоса)
 <details>
 <summary><b>Әдеттегі браузер профиліме зиян келтірмей ме?</b></summary>
 
-Жоқ. Әр сессия жүйенің уақытша қалтасындағы жаңа профильді пайдаланады, ол шыққанда өшіріледі. Ашық тұрған браузеріңізге әсер етпейді — екеуі қатар жұмыс істей алады.
+Жоқ. Әдепкіде әр сессия жүйенің уақытша қалтасындағы жаңа профильді пайдаланады, ол шыққанда өшіріледі. Аккаунтқа кірулер сақталуы керек болса, capy.yaml ішінде `profile_dir` (немесе `--profile-dir`) параметріне бөлек қалтаны көрсетіңіз — күнделікті браузер профилін емес. Ашық тұрған браузеріңізге әсер етпейді — екеуі қатар жұмыс істей алады.
 </details>
 
 <details>

@@ -1,21 +1,36 @@
-# capy.yaml - CapyBrowser config: browser settings + extra MCP servers.
-# Your AI app starts only CapyBrowser; CapyBrowser starts the servers below
-# and gives the model their tools next to the browser tools.
-# Docs: https://github.com/capyriver/CapyBrowser#capyyaml
+# capy.yaml - CapyBrowser config: browser settings + extra MCP servers ("connectors").
+# Your AI app starts only CapyBrowser. The model gets the 6 browser tools plus three
+# router tools (list_connectors, find_tools, call_tool) that reach every connector below.
+# The file is re-read automatically when it changes. Docs:
+# https://github.com/capyriver/CapyBrowser#capyyaml
 
 browser:
   headed: false              # true = show the browser window
   lang: en-US                # browser language; remove to use the system locale
-  max_chars: 3500            # max size of one page view returned to the model
+  max_chars: 3500            # max size of any tool response
+  nav_timeout: 25            # seconds to wait for a page to load
   allow_local_files: false   # allow file:// URLs
-  # path: C:\Program Files\Google\Chrome\Application\chrome.exe   # a specific browser
+  # profile_dir: ~/.capybrowser/profile   # keep cookies/logins between runs (default: temporary profile)
+  # browser: /path/to/chrome              # a specific browser executable
 
-mcp_servers: {}              # any stdio MCP servers, same format as Claude Desktop:
-#  time:
+# env_file: .env             # KEY=VALUE file next to capy.yaml (loaded automatically if present)
+
+mcp_servers: {}              # connectors; examples (remove "{}" above when you add one):
+#  time:                     # local stdio server, same format as Claude Desktop
 #    command: uvx
 #    args: ["mcp-server-time"]
-#  filesystem:
+#    description: current time and time zones
+#  files:
 #    command: npx
-#    args: ["-y", "@modelcontextprotocol/server-filesystem", "C:/Users/me/Documents"]
-#    env:
-#      SOME_TOKEN: ${SOME_TOKEN}   # ${VAR} is read from the environment
+#    args: ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/folder"]
+#  github:                   # remote server with a token from the environment / .env
+#    type: streamable-http   # or: sse
+#    url: https://api.githubcopilot.com/mcp/
+#    auth:
+#      type: bearer
+#      token: ${GITHUB_TOKEN}
+#  notion:                   # remote server with OAuth 2.0 + PKCE (opens your browser once)
+#    type: streamable-http
+#    url: https://mcp.notion.com/mcp
+#    auth:
+#      type: oauth
