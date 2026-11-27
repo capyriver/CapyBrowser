@@ -427,7 +427,8 @@ async def _session_call(cfg_path, scenario, extra_args=()):
             return await scenario(s, call)
 
 
-def test_capy_yaml_template_is_valid(tmp_path):
+def test_capy_yaml_template_is_valid(tmp_path, monkeypatch):
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     f = tmp_path / "capy.yaml"
     f.write_text(bm.CAPY_YAML_TEMPLATE, encoding="utf-8")
     cfg = bm.load_config(str(f))
@@ -439,6 +440,13 @@ def test_capy_yaml_template_is_valid(tmp_path):
     cfg = bm.load_config(str(f))
     assert set(cfg["mcp_servers"]) == {"time", "files", "github", "notion"}
     assert cfg["mcp_servers"]["github"]["auth"]["type"] == "bearer" and cfg["mcp_servers"]["notion"]["auth"]["type"] == "oauth"
+    # ${GITHUB_TOKEN} is not set: the file still loads, only that connector reports the problem
+    assert "environment variable" in cfg["mcp_servers"]["github"]["problem"] and "problem" not in cfg["mcp_servers"]["time"]
+    r = bm.Router()
+    r.connectors = {n: bm.Connector(n, spec) for n, spec in cfg["mcp_servers"].items()}
+    out = asyncio.run(r.call("github.anything", {}))
+    assert out.startswith("Error") and "environment variable" in out
+    assert "failed: auth.token is empty" in r.list_text()
 
 
 def test_config_defaults_empty_and_missing(tmp_path, monkeypatch):

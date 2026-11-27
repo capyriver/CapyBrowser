@@ -2157,8 +2157,10 @@ def _normalize_server(name: str, spec: Any) -> dict:
         atype = str(auth.get("type") or "").lower()
         if atype == "bearer":
             token = auth.get("token")
-            if not isinstance(token, str) or not token.strip():
+            if not isinstance(token, str):
                 raise ConfigError(f"{where}.auth.token: required for bearer auth (use ${{ENV_VAR}})")
+            if not token.strip():  # e.g. ${GITHUB_TOKEN} not set: keep the config, disable only this connector
+                out["problem"] = "auth.token is empty - set the environment variable used in capy.yaml (or .env)"
             register_secret(token)
             out["auth"] = {"type": "bearer", "token": token.strip()}
         elif atype == "oauth":
@@ -2597,6 +2599,9 @@ class Connector:
         return self.session is not None and self._task is not None and not self._task.done()
 
     async def ensure(self) -> None:
+        if self.spec.get("problem"):
+            self.status, self.error = "failed", self.spec["problem"]
+            raise ConnectorError(f"connector '{self.name}' is not available: {self.spec['problem']}")
         async with self._lock:
             if self.connected:
                 return
