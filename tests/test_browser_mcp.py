@@ -847,8 +847,9 @@ class UI:
     def __init__(self, cfg_path, extra=()):
         env = dict(os.environ)
         env.pop("GITHUB_TOKEN", None)
+        flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if os.name == "nt" else 0  # for CTRL_BREAK_EVENT
         self.proc = subprocess.Popen([sys.executable, str(ROOT / "browser_mcp.py"), "ui", "--config", str(cfg_path), "--no-open", *extra],
-                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, creationflags=flags)
         line = self.proc.stdout.readline().decode()
         m = re.search(r"(http://127\.0\.0\.1:(\d+))/\?t=(\S+)", line)
         assert m, line + self.proc.stderr.read().decode()
@@ -884,7 +885,8 @@ class UI:
         import signal as _s
 
         if self.proc.poll() is None:
-            self.proc.send_signal(sig or _s.SIGINT)
+            # Windows has no SIGINT for other processes: CTRL_BREAK_EVENT arrives as SIGBREAK, which the panel handles
+            self.proc.send_signal(sig or (_s.CTRL_BREAK_EVENT if os.name == "nt" else _s.SIGINT))
         try:
             return self.proc.wait(30)
         except subprocess.TimeoutExpired:
