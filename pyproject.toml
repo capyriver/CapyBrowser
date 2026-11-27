@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "capybrowser"
+dynamic = ["version"]
+description = "Give any LLM a real browser: a single-file MCP server that drives system Chrome / Edge / Brave / Chromium over CDP."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "CapyRiver" }]
+keywords = ["mcp", "model-context-protocol", "browser", "chrome", "cdp", "llm", "ollama", "agent", "claude"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Internet :: WWW/HTTP :: Browsers",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "mcp>=1.2.0,<2",
+    "websockets>=13.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+capybrowser = "browser_mcp:main"
+browser-mcp = "browser_mcp:main"
+
+[project.urls]
+Homepage = "https://github.com/capyriver/CapyBrowser"
+Issues = "https://github.com/capyriver/CapyBrowser/issues"
+Changelog = "https://github.com/capyriver/CapyBrowser/blob/main/CHANGELOG.md"
+
+[tool.setuptools]
+py-modules = ["browser_mcp"]
+
+[tool.setuptools.dynamic]
+version = { attr = "browser_mcp.__version__" }
+
+[tool.ruff]
+line-length = 130
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E9", "F", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

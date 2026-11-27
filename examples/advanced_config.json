@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "capybrowser": {
+      "command": "uvx",
+      "args": [
+        "--from", "git+https://github.com/capyriver/CapyBrowser", "capybrowser",
+        "--headed",
+        "--lang", "ru-RU",
+        "--max-chars", "6000",
+        "--browser", "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+      ],
+      "env": {
+        "BROWSER_MCP_NAV_TIMEOUT": "40"
+      }
+    }
+  }
+}

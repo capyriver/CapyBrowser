@@ -1,0 +1,4 @@
+# ~/.codex/config.toml
+[mcp_servers.capybrowser]
+command = "uvx"
+args = ["--from", "git+https://github.com/capyriver/CapyBrowser", "capybrowser"]

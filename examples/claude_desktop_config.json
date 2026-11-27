@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "capybrowser": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/capyriver/CapyBrowser", "capybrowser"]
+    }
+  }
+}

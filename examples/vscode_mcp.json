@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "capybrowser": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/capyriver/CapyBrowser", "capybrowser"]
+    }
+  }
+}
