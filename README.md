@@ -10,6 +10,8 @@
 <p align="center">
   <a href="#quick-start"><img src="assets/icons/capy-rocket.svg" width="30" height="30" alt="" /> Quick start</a>
   &nbsp;·&nbsp;
+  <a href="#control-panel"><img src="assets/icons/capy-sliders.svg" width="30" height="30" alt="" /> Panel</a>
+  &nbsp;·&nbsp;
   <a href="#capyyaml"><img src="assets/icons/capy-orange.svg" width="30" height="30" alt="" /> capy.yaml</a>
   &nbsp;·&nbsp;
   <a href="#connect-to-your-app"><img src="assets/icons/capy-plug.svg" width="30" height="30" alt="" /> Setup</a>
@@ -78,6 +80,7 @@ The model answers with `type_text(3, "admin")`, `click(5)` — and a real browse
 ### <img src="assets/icons/capy-bolt.svg" width="40" height="40" alt="" align="absmiddle" /> Features
 
 - **6 browser tools:** `web_search`, `open_url`, `click`, `type_text`, `scroll`, `go_back` — plus 3 router tools (`list_connectors`, `find_tools`, `call_tool`) for every other MCP server you add in [capy.yaml](#capyyaml).
+- **Control panel:** `capybrowser ui` — a local, offline web panel to add connectors from templates, test their tools, manage secrets, preview what the model sees and copy configs for your chat app ([details](#control-panel)).
 - **Finds your browser automatically** on Windows, macOS and Linux (Chrome, Edge, Brave, Chromium, Vivaldi; stable, beta, dev, Canary, Snap, Flatpak).
 - **Lazy start:** the browser launches on the first tool call, on a free port, with a fresh temporary profile. Your normal profile, passwords and cookies are never touched.
 - **Works on modern sites:** real mouse and keyboard events through CDP, with verified fallbacks for React/Vue inputs, input masks (phones, cards, dates), overlays, custom checkboxes, shadow DOM, scroll containers and infinite feeds.
@@ -118,6 +121,31 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 Restart the app and ask: *"Search the web for the latest Python release and open the official page."*
+
+<a id="control-panel"></a>
+
+### <img src="assets/icons/capy-sliders.svg" width="40" height="40" alt="" align="absmiddle" /> Control panel: `capybrowser ui`
+
+A local web panel for everything in `capy.yaml` — no YAML editing needed. It runs on your computer only, works fully offline and is built into the same single file.
+
+```bash
+uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser ui     # or: uv run browser_mcp.py ui
+capybrowser ui --config ~/.capy.yaml --port 8765 --no-open
+```
+
+<p align="center">
+  <img src="assets/ui-hub.png" width="49%" alt="CapyBrowser control panel: connectors" />
+  <img src="assets/ui-preview.png" width="49%" alt="CapyBrowser control panel: how the model sees a page" />
+</p>
+
+- **Connectors** — cards with live status (`ready`, `connected`, `needs auth`, `missing env`, `disabled`, `error`), an on/off switch, **Test & tools** (connect, see every tool with its arguments and run it with JSON arguments), **Authorize** for OAuth servers, **Edit** and **Delete**. **+ Add connector** offers templates: any remote MCP server (URL + OAuth / Bearer — Gmail / Google Workspace, Zapier, Composio, Cloudflare…), GitHub, Notion, Filesystem, PostgreSQL, SQLite, custom stdio and custom http/sse.
+- **Browser & LLM preview** — all browser options (headed, language, `max_chars` with 4B / 8B / 32B presets, page timeout, profile folder, browser path) and a sandbox that shows **exactly what the model receives** for any URL or search, with character and token counts; click, type, scroll and go back right from the panel.
+- **Config & secrets** — every `${VAR}` used in `capy.yaml` with its status; values you enter are written to `.env` next to the config (mode 600, added to `.gitignore`) and are never sent back to the page. A `capy.yaml` editor with **Validate** and **Save** that refuses a broken file.
+- **Connect to chat** — copy-ready configs with absolute paths for LM Studio, Claude Desktop, Codex CLI, Cursor, Open WebUI (via mcpo) and the Python Ollama agent.
+
+Every change is saved to `capy.yaml` (comments are kept) and a running CapyBrowser picks it up automatically. Options: `--config PATH` (default `./capy.yaml`, then `~/.capy.yaml`; a commented template is created if none exists), `--host` (default `127.0.0.1`), `--port` (default `8765`; a free port is used if it is busy), `--no-open`. Stop with Ctrl+C.
+
+**Security.** The panel listens on `127.0.0.1` only. The link printed in the terminal contains a one-time session key; the page and every API call require it (`X-Capy-Token`), and requests with a foreign `Origin` or `Host` are rejected, so websites open in your browser cannot reach the panel (CSRF / DNS rebinding). A strict Content-Security-Policy is set and all data is rendered as text.
 
 <a id="capyyaml"></a>
 
@@ -452,13 +480,13 @@ uv run capybrowser --headed       # run from source
 Project layout:
 
 ```text
-browser_mcp.py          the whole server (also runnable as a single PEP 723 script)
+browser_mcp.py          the whole server and the `ui` control panel (also runnable as a single PEP 723 script)
 capy.yaml               example config: browser settings + connectors (other MCP servers)
 uv.lock                 locked dependency versions
 pyproject.toml          package metadata and the `capybrowser` command
 examples/               MCP configs for popular apps and an Ollama agent
 tests/                  pytest suite (runs on Windows, macOS and Linux in CI)
-assets/                 banner, tagline, footer, pixel-art capybara icons, social preview image
+assets/                 banner, tagline, footer, pixel-art capybara icons, panel screenshots, social preview image
 ```
 
 Before the first release the server went through more than 40,000 automated checks: fuzzing on thousands of generated and broken HTML pages, connect/disconnect and crash/kill cycles with leak and zombie-process checks, invalid arguments over the real MCP protocol, and end-to-end runs where a 4B local model completed real tasks on live websites.
@@ -506,6 +534,7 @@ Password
 ### <img src="assets/icons/capy-bolt.svg" width="40" height="40" alt="" align="absmiddle" /> 功能
 
 - **6 个浏览器工具：** `web_search`、`open_url`、`click`、`type_text`、`scroll`、`go_back`，以及用于 capy.yaml 中所有其他 MCP 服务器的 3 个路由工具（`list_connectors`、`find_tools`、`call_tool`）。
+- **控制面板：** `capybrowser ui` —— 本地离线网页面板，可用模板添加连接器、测试工具、管理密钥、预览模型看到的内容并复制聊天应用配置。
 - **自动查找浏览器**：支持 Windows、macOS、Linux（Chrome、Edge、Brave、Chromium、Vivaldi；稳定版、Beta、Dev、Canary、Snap、Flatpak）。
 - **按需启动**：首次调用工具时才启动浏览器，使用空闲端口和全新的临时配置文件，绝不触碰你平时的配置、密码和 Cookie。
 - **适配现代网站**：通过 CDP 发送真实的鼠标和键盘事件，并为 React/Vue 输入框、输入掩码（电话、银行卡、日期）、遮罩层、自定义复选框、Shadow DOM、滚动容器和无限加载列表提供经过验证的后备方案。
@@ -544,6 +573,29 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 重启应用后试着问：*“搜索 Python 的最新版本并打开官方页面。”*
+
+### <img src="assets/icons/capy-sliders.svg" width="40" height="40" alt="" align="absmiddle" /> 控制面板：`capybrowser ui`
+
+用于管理 `capy.yaml` 全部内容的本地网页面板，无需手动编辑 YAML。它只在你的电脑上运行，完全离线可用，并且内置在同一个文件中。
+
+```bash
+uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser ui     # or: uv run browser_mcp.py ui
+capybrowser ui --config ~/.capy.yaml --port 8765 --no-open
+```
+
+<p align="center">
+  <img src="assets/ui-hub.png" width="49%" alt="CapyBrowser control panel: connectors" />
+  <img src="assets/ui-preview.png" width="49%" alt="CapyBrowser control panel: how the model sees a page" />
+</p>
+
+- **连接器**：显示实时状态（`ready`、`connected`、`needs auth`、`missing env`、`disabled`、`error`）的卡片，开关、**Test & tools**（连接后查看所有工具及参数，并用 JSON 参数直接运行）、OAuth 服务器的 **Authorize**、**Edit** 和 **Delete**。**+ Add connector** 提供模板：任意远程 MCP 服务器（URL + OAuth / Bearer：Gmail / Google Workspace、Zapier、Composio、Cloudflare 等）、GitHub、Notion、Filesystem、PostgreSQL、SQLite、自定义 stdio 和 http/sse。
+- **浏览器与 LLM 预览**：所有浏览器选项（窗口、语言、带 4B / 8B / 32B 预设的 `max_chars`、加载超时、配置文件夹、浏览器路径），以及一个沙盒，可显示任意网址或搜索下**模型实际收到的内容**及字符数和 token 数；可直接在面板中点击、输入、滚动和后退。
+- **配置与密钥**：列出 `capy.yaml` 中使用的所有 `${VAR}` 及状态；输入的值写入配置旁的 `.env`（权限 600，并加入 `.gitignore`），且永远不会返回到页面。带 **Validate** 和 **Save** 的 `capy.yaml` 编辑器，拒绝保存无效文件。
+- **连接到聊天**：为 LM Studio、Claude Desktop、Codex CLI、Cursor、Open WebUI（通过 mcpo）和 Python Ollama 智能体提供带绝对路径、可一键复制的配置。
+
+所有修改都会保存到 `capy.yaml`（保留注释），正在运行的 CapyBrowser 会自动加载。参数：`--config PATH`（默认 `./capy.yaml`，其次 `~/.capy.yaml`；都不存在时会创建带注释的模板）、`--host`（默认 `127.0.0.1`）、`--port`（默认 `8765`，被占用时自动换用空闲端口）、`--no-open`。按 Ctrl+C 停止。
+
+**安全。** 面板只监听 `127.0.0.1`。终端中打印的链接包含一次性会话密钥；页面和所有 API 调用都需要它（`X-Capy-Token`），来自其他 `Origin` 或 `Host` 的请求会被拒绝，因此浏览器中打开的网站无法访问面板（CSRF / DNS 重绑定）。页面启用严格的 Content-Security-Policy，所有数据都以纯文本显示。
 
 ### <img src="assets/icons/capy-orange.svg" width="40" height="40" alt="" align="absmiddle" /> capy.yaml —— 一个文件：浏览器 + 你所有的 MCP 服务器
 
@@ -800,6 +852,7 @@ Password
 ### <img src="assets/icons/capy-bolt.svg" width="40" height="40" alt="" align="absmiddle" /> Возможности
 
 - **6 инструментов браузера:** `web_search`, `open_url`, `click`, `type_text`, `scroll`, `go_back` — плюс 3 инструмента-роутера (`list_connectors`, `find_tools`, `call_tool`) для всех остальных MCP-серверов из capy.yaml.
+- **Панель управления:** `capybrowser ui` — локальная офлайн веб-панель: добавить коннекторы из шаблонов, проверить их инструменты, задать секреты, посмотреть, что видит модель, и скопировать конфиг для чата.
 - **Сам находит браузер** на Windows, macOS и Linux (Chrome, Edge, Brave, Chromium, Vivaldi; stable, beta, dev, Canary, Snap, Flatpak).
 - **Ленивый запуск:** браузер стартует при первом вызове инструмента, на свободном порту, с новым временным профилем. Ваш обычный профиль, пароли и cookies не затрагиваются.
 - **Работает на современных сайтах:** настоящие события мыши и клавиатуры через CDP с проверенными запасными вариантами для полей React/Vue, масок ввода (телефоны, карты, даты), перекрывающих слоёв, кастомных чекбоксов, shadow DOM, контейнеров со своим скроллом и бесконечных лент.
@@ -838,6 +891,29 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 Перезапустите приложение и попросите: *«Найди в интернете последнюю версию Python и открой официальную страницу».*
+
+### <img src="assets/icons/capy-sliders.svg" width="40" height="40" alt="" align="absmiddle" /> Панель управления: `capybrowser ui`
+
+Локальная веб-панель для всего, что есть в `capy.yaml`, — без ручной правки YAML. Работает только на вашем компьютере, полностью офлайн и встроена в тот же единственный файл.
+
+```bash
+uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser ui     # or: uv run browser_mcp.py ui
+capybrowser ui --config ~/.capy.yaml --port 8765 --no-open
+```
+
+<p align="center">
+  <img src="assets/ui-hub.png" width="49%" alt="CapyBrowser control panel: connectors" />
+  <img src="assets/ui-preview.png" width="49%" alt="CapyBrowser control panel: how the model sees a page" />
+</p>
+
+- **Коннекторы** — карточки с живым статусом (`ready`, `connected`, `needs auth`, `missing env`, `disabled`, `error`), переключатель вкл/выкл, **Test & tools** (подключиться, увидеть все инструменты с аргументами и запустить любой с JSON-аргументами), **Authorize** для серверов с OAuth, **Edit** и **Delete**. Кнопка **+ Add connector** открывает каталог шаблонов: любой удалённый MCP (URL + OAuth / Bearer — Gmail / Google Workspace, Zapier, Composio, Cloudflare…), GitHub, Notion, Filesystem, PostgreSQL, SQLite, свой stdio и свой http/sse.
+- **Браузер и превью** — все параметры браузера (окно, язык, `max_chars` с пресетами под 4B / 8B / 32B, таймаут загрузки, папка профиля, путь к браузеру) и песочница, которая показывает **ровно то, что получит модель**, для любого адреса или поиска, с подсчётом символов и токенов; кликать, вводить текст, листать и возвращаться можно прямо из панели.
+- **Конфиг и секреты** — все `${VAR}` из `capy.yaml` со статусом; введённые значения записываются в `.env` рядом с конфигом (права 600, добавляется в `.gitignore`) и никогда не возвращаются на страницу. Редактор `capy.yaml` с кнопками **Validate** и **Save**, который не даст сохранить сломанный файл.
+- **Подключение к чату** — готовые конфиги с абсолютными путями для LM Studio, Claude Desktop, Codex CLI, Cursor, Open WebUI (через mcpo) и Python-агента для Ollama, копирование в один клик.
+
+Все изменения сохраняются в `capy.yaml` (комментарии остаются на месте), работающий CapyBrowser подхватывает их сам. Параметры: `--config PATH` (по умолчанию `./capy.yaml`, затем `~/.capy.yaml`; если файла нет, создаётся шаблон с комментариями), `--host` (по умолчанию `127.0.0.1`), `--port` (по умолчанию `8765`; если занят — берётся свободный), `--no-open`. Остановка — Ctrl+C.
+
+**Безопасность.** Панель слушает только `127.0.0.1`. Ссылка в терминале содержит одноразовый ключ сессии; без него не открываются ни страница, ни API (`X-Capy-Token`), а запросы с чужим `Origin` или `Host` отклоняются — сайты, открытые в вашем браузере, не могут обратиться к панели (CSRF / DNS rebinding). Включена строгая Content-Security-Policy, все данные выводятся как текст.
 
 ### <img src="assets/icons/capy-orange.svg" width="40" height="40" alt="" align="absmiddle" /> capy.yaml — один файл: браузер + все ваши MCP-серверы
 
@@ -1208,6 +1284,7 @@ Password
 ### <img src="assets/icons/capy-bolt.svg" width="40" height="40" alt="" align="absmiddle" /> Мүмкіндіктері
 
 - **Браузердің 6 құралы:** `web_search`, `open_url`, `click`, `type_text`, `scroll`, `go_back` — және capy.yaml-дағы басқа MCP серверлері үшін 3 бағыттаушы құрал (`list_connectors`, `find_tools`, `call_tool`).
+- **Басқару панелі:** `capybrowser ui` — жергілікті офлайн веб-панель: үлгілерден коннектор қосу, құралдарын тексеру, құпияларды басқару, модель не көретінін қарау және чат баптауын көшіру.
 - **Браузерді өзі табады** — Windows, macOS және Linux жүйелерінде (Chrome, Edge, Brave, Chromium, Vivaldi; stable, beta, dev, Canary, Snap, Flatpak).
 - **Кейінге қалдырылған іске қосу:** браузер құрал алғаш шақырылғанда бос портта, жаңа уақытша профильмен ашылады. Әдеттегі профиліңізге, құпиясөздер мен cookie-ге тиіспейді.
 - **Заманауи сайттарда жұмыс істейді:** CDP арқылы нағыз тінтуір мен пернетақта оқиғалары, ал React/Vue өрістеріне, енгізу маскаларына (телефон, карта, күн), үстіңгі қабаттарға, арнайы белгі құсбелгілеріне, shadow DOM-ға, өз айналдыруы бар контейнерлерге және шексіз лентаға тексерілген қосалқы тәсілдер бар.
@@ -1246,6 +1323,29 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 Қолданбаны қайта іске қосып, сұраңыз: *«Python-ның соңғы нұсқасын интернеттен тауып, ресми бетін аш».*
+
+### <img src="assets/icons/capy-sliders.svg" width="40" height="40" alt="" align="absmiddle" /> Басқару панелі: `capybrowser ui`
+
+`capy.yaml` ішіндегінің бәріне арналған жергілікті веб-панель — YAML-ды қолмен өзгертудің қажеті жоқ. Тек сіздің компьютеріңізде, толықтай офлайн жұмыс істейді және сол бір файлға кірістірілген.
+
+```bash
+uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser ui     # or: uv run browser_mcp.py ui
+capybrowser ui --config ~/.capy.yaml --port 8765 --no-open
+```
+
+<p align="center">
+  <img src="assets/ui-hub.png" width="49%" alt="CapyBrowser control panel: connectors" />
+  <img src="assets/ui-preview.png" width="49%" alt="CapyBrowser control panel: how the model sees a page" />
+</p>
+
+- **Коннекторлар** — тірі күйі көрсетілген карточкалар (`ready`, `connected`, `needs auth`, `missing env`, `disabled`, `error`), қосу/өшіру ауыстырғышы, **Test & tools** (қосылып, барлық құралдарды аргументтерімен көру және кез келгенін JSON аргументтерімен іске қосу), OAuth серверлері үшін **Authorize**, **Edit** және **Delete**. **+ Add connector** үлгілер каталогын ашады: кез келген қашықтағы MCP (URL + OAuth / Bearer — Gmail / Google Workspace, Zapier, Composio, Cloudflare…), GitHub, Notion, Filesystem, PostgreSQL, SQLite, өз stdio және өз http/sse.
+- **Браузер және алдын ала қарау** — браузердің барлық параметрлері (терезе, тіл, 4B / 8B / 32B алдын ала мәндері бар `max_chars`, жүктеу уақыты, профиль қалтасы, браузер жолы) және кез келген мекенжай не іздеу үшін **модель нақты не алатынын** таңбалар мен токендер санымен көрсететін құмсалғыш; басу, мәтін енгізу, айналдыру және артқа қайту тікелей панельден.
+- **Баптау және құпиялар** — `capy.yaml` ішіндегі барлық `${VAR}` және олардың күйі; енгізілген мәндер баптау жанындағы `.env` файлына жазылады (рұқсат 600, `.gitignore`-ға қосылады) және бетке ешқашан қайтарылмайды. **Validate** және **Save** батырмалары бар `capy.yaml` редакторы бұзылған файлды сақтауға жол бермейді.
+- **Чатқа қосу** — LM Studio, Claude Desktop, Codex CLI, Cursor, Open WebUI (mcpo арқылы) және Ollama үшін Python агентіне абсолютті жолдары бар, бір басумен көшірілетін дайын баптаулар.
+
+Барлық өзгерістер `capy.yaml`-ға сақталады (түсініктемелер сақталады), ал жұмыс істеп тұрған CapyBrowser оларды өздігінен қабылдайды. Параметрлер: `--config PATH` (әдепкі `./capy.yaml`, содан кейін `~/.capy.yaml`; файл болмаса, түсініктемелері бар үлгі жасалады), `--host` (әдепкі `127.0.0.1`), `--port` (әдепкі `8765`; бос болмаса, басқа бос порт алынады), `--no-open`. Тоқтату — Ctrl+C.
+
+**Қауіпсіздік.** Панель тек `127.0.0.1` тыңдайды. Терминалдағы сілтемеде бір реттік сессия кілті бар; онсыз бет те, API да (`X-Capy-Token`) ашылмайды, ал бөгде `Origin` не `Host` сұраулары қабылданбайды — браузеріңізде ашылған сайттар панельге қол жеткізе алмайды (CSRF / DNS rebinding). Қатаң Content-Security-Policy қосылған, барлық деректер мәтін ретінде шығарылады.
 
 ### <img src="assets/icons/capy-orange.svg" width="40" height="40" alt="" align="absmiddle" /> capy.yaml — бір файл: браузер + барлық MCP серверлеріңіз
 

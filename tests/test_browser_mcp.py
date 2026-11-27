@@ -787,3 +787,266 @@ def test_config_state_reload_unit(tmp_path):
         assert cli.effective()["max_chars"] == 900 and cli.effective()["headed"] is False
     finally:
         bm._CONFIG["max_chars"], bm.NAV_TIMEOUT = old_max, old_nav
+
+
+# --------------------------------------------------------------------------- web panel: capybrowser ui
+
+def test_capyfile_edits_keep_comments(tmp_path):
+    f = tmp_path / "capy.yaml"
+    f.write_text("# my notes\nbrowser:\n  lang: en-US   # keep me\n  # max_chars: 3500   # model budget\n\n"
+                 "mcp_servers:\n  # a comment before mail\n  mail:\n    command: run   # inline\n    args: [a]\n"
+                 "  other: {command: x}\n# trailing comment\n", encoding="utf-8")
+    cf = bm.CapyFile(str(f))
+    cf.set_enabled("mail", False)
+    cf.set_enabled("other", False)
+    cf.set_browser({"max_chars": 6000, "headed": True, "lang": "ru-RU"})
+    cf.set_server("time", {"command": "uvx", "args": ["mcp-server-time"]}, must_exist=False)
+    text = f.read_text(encoding="utf-8")
+    for keep in ("# my notes", "lang: ru-RU   # keep me", "max_chars: 6000   # model budget", "# a comment before mail",
+                 "command: run   # inline", "# trailing comment", "enabled: false"):
+        assert keep in text, keep
+    cfg = bm.load_config(str(f))
+    assert cfg["mcp_servers"]["mail"]["enabled"] is False and cfg["mcp_servers"]["other"]["enabled"] is False
+    assert cfg["browser"]["headed"] is True and cfg["mcp_servers"]["time"]["args"] == ["mcp-server-time"]
+    with pytest.raises(ValueError):
+        cf.set_server("time", {"command": "x"}, must_exist=False)  # duplicate
+    with pytest.raises(ValueError):
+        cf.set_server("bad", {"url": "ftp://x"}, must_exist=False)  # invalid: nothing written
+    assert "bad:" not in f.read_text(encoding="utf-8")
+    cf.delete_server("mail")
+    cf.delete_server("other")
+    cf.delete_server("time")
+    assert "mcp_servers: {}" in f.read_text(encoding="utf-8") and bm.load_config(str(f))["mcp_servers"] == {}
+    cf.set_server("again", {"command": "y"}, must_exist=False)  # works from the "{}" form too
+    assert "again" in bm.load_config(str(f))["mcp_servers"]
+
+
+def test_presets_produce_valid_config(tmp_path):
+    cf = bm.CapyFile(str(tmp_path / "capy.yaml"))
+    (tmp_path / "capy.yaml").write_text(bm.CAPY_YAML_TEMPLATE, encoding="utf-8")
+    fields = {"remote": {"name": "zap", "url": "https://mcp.zapier.example/mcp", "auth": "bearer", "token_var": "ZAP"},
+              "github": {}, "notion": {}, "filesystem": {"folder": str(tmp_path)}, "postgres": {},
+              "sqlite": {"db": str(tmp_path / "x.db")}, "stdio": {"command": "uvx", "args": "mcp-server-time\n--local-timezone\nUTC"},
+              "http": {"name": "h", "url": "http://127.0.0.1:9/mcp", "transport": "sse"}}
+    for p in bm.PRESETS:
+        name, spec = bm.preset_spec(p["id"], fields[p["id"]])
+        cf.set_server(name, spec, must_exist=False)
+    cfg = bm.load_config(cf.path)
+    assert set(cfg["mcp_servers"]) == {"zap", "github", "notion", "files", "postgres", "sqlite", "local", "h"}
+    assert cfg["mcp_servers"]["h"]["type"] == "sse" and cfg["mcp_servers"]["local"]["args"] == ["mcp-server-time", "--local-timezone", "UTC"]
+    assert cfg["mcp_servers"]["zap"]["auth"]["type"] == "bearer" and cfg["mcp_servers"]["notion"]["auth"]["type"] == "oauth"
+    with pytest.raises(ValueError):
+        bm.preset_spec("filesystem", {"folder": ""})
+    with pytest.raises(ValueError):
+        bm.preset_spec("stdio", {"name": "bad name", "command": "x"})
+
+
+class UI:
+    """Runs `browser_mcp.py ui` in a subprocess and talks to its API like the page does."""
+
+    def __init__(self, cfg_path, extra=()):
+        env = dict(os.environ)
+        env.pop("GITHUB_TOKEN", None)
+        self.proc = subprocess.Popen([sys.executable, str(ROOT / "browser_mcp.py"), "ui", "--config", str(cfg_path), "--no-open", *extra],
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+        line = self.proc.stdout.readline().decode()
+        m = re.search(r"(http://127\.0\.0\.1:(\d+))/\?t=(\S+)", line)
+        assert m, line + self.proc.stderr.read().decode()
+        self.base, self.port, self.token = m.group(1), int(m.group(2)), m.group(3)
+        import urllib.request
+
+        self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+    def raw(self, method, path, body=None, headers=None, token=True):
+        import urllib.error
+        import urllib.request
+
+        h = {"Content-Type": "application/json"} if body is not None else {}
+        if token:
+            h["X-Capy-Token"] = self.token
+        h.update(headers or {})
+        req = urllib.request.Request(self.base + path, method=method, headers=h,
+                                     data=json.dumps(body).encode() if body is not None else None)
+        try:
+            with self.opener.open(req, timeout=120) as r:
+                return r.status, r.read().decode(), dict(r.headers)
+        except urllib.error.HTTPError as e:
+            return e.code, e.read().decode(), dict(e.headers)
+
+    def api(self, method, path, body=None, expect=200):
+        if body is None and method in ("POST", "PUT"):
+            body = {}
+        status, text, _ = self.raw(method, path, body)
+        assert status == expect, (status, text)
+        return json.loads(text)
+
+    def stop(self, sig=None):
+        import signal as _s
+
+        if self.proc.poll() is None:
+            self.proc.send_signal(sig or _s.SIGINT)
+        try:
+            return self.proc.wait(30)
+        except subprocess.TimeoutExpired:
+            self.proc.kill()
+            raise
+
+
+def _ui_config(tmp_path):
+    (tmp_path / "local_server.py").write_text(STDIO_SERVER, encoding="utf-8")
+    f = tmp_path / "capy.yaml"
+    f.write_text("# panel test config\nbrowser:\n  lang: de-DE   # german pages\n  max_chars: 2000\n"
+                 "mcp_servers:\n  mail:\n    command: %s\n    args: [%s]\n    description: mail and todo\n"
+                 % (json.dumps(sys.executable), json.dumps(str(tmp_path / "local_server.py"))), encoding="utf-8")
+    (tmp_path / ".git").mkdir()  # pretend the folder is a repository: .env must be git-ignored
+    return f
+
+
+@needs_browser
+def test_ui_security_and_page(tmp_path):
+    import socket
+
+    busy = socket.socket()
+    busy.bind(("127.0.0.1", 0))
+    busy.listen()
+    try:
+        ui = UI(_ui_config(tmp_path), ["--port", str(busy.getsockname()[1])])
+        assert ui.port != busy.getsockname()[1]  # busy port -> another free port
+    finally:
+        busy.close()
+    try:
+        status, html, _ = ui.raw("GET", "/", token=False)
+        assert status == 403 and ui.token not in html
+        status, html, headers = ui.raw("GET", "/?t=" + ui.token, token=False)
+        assert status == 200 and f'const TOKEN = "{ui.token}"' in html and "<script nonce=" in html
+        assert "default-src 'none'" in headers["content-security-policy"] and "http" not in html.split("<script")[0].split("<style>")[0]
+        assert "cdn" not in html.lower() and "googleapis" not in html  # works offline
+        assert "innerHTML" not in html  # user data only through textContent / DOM API
+        assert ui.raw("GET", "/?t=wrong", token=False)[0] == 403
+        assert ui.raw("GET", "/?t=" + ui.token, token=False, headers={"Host": f"evil.example:{ui.port}"})[0] == 403
+        assert ui.raw("GET", "/api/state", token=False)[0] == 403
+        assert ui.raw("GET", "/api/state", headers={"X-Capy-Token": "nope"})[0] == 403
+        assert ui.raw("GET", "/api/state", headers={"Host": f"rebind.example:{ui.port}"})[0] == 403
+        assert ui.raw("PUT", "/api/env", {"name": "X", "value": "1"}, headers={"Origin": "https://evil.example"})[0] == 403
+        assert ui.raw("PUT", "/api/env", {"name": "X", "value": "1"}, headers={"Origin": f"http://localhost:{ui.port}"})[0] == 200
+        assert ui.raw("POST", "/api/connectors", None)[0] in (400, 415)  # JSON body required
+    finally:
+        assert ui.stop() == 0
+
+
+@needs_browser
+def test_ui_crud_env_config_preview(base, tmp_path):
+    cfg = _ui_config(tmp_path)
+    ui = UI(cfg)
+    try:
+        st = ui.api("GET", "/api/state")
+        assert st["version"] == bm.__version__ and st["config_path"] == str(cfg)
+        assert [c["name"] for c in st["connectors"]] == ["mail"] and st["connectors"][0]["status"] == "ready"
+        assert st["browser"]["lang"] == "de-DE" and len(st["presets"]) == 8
+        # add GitHub (bearer ${GITHUB_TOKEN}) -> missing_env until the secret is set
+        ui.api("POST", "/api/connectors", {"preset": "github", "fields": {"name": "github", "auth": "bearer", "token_var": "GH_PANEL_TOKEN"}})
+        ui.api("POST", "/api/connectors", {"preset": "github", "fields": {"name": "github"}}, expect=400)  # duplicate
+        gh = [c for c in ui.api("GET", "/api/state")["connectors"] if c["name"] == "github"][0]
+        assert gh["status"] == "missing_env" and gh["missing_vars"] == ["GH_PANEL_TOKEN"]
+        secret = "ghp_" + "S" * 36
+        ui.api("PUT", "/api/env", {"name": "GH_PANEL_TOKEN", "value": secret})
+        env_file = (tmp_path / ".env").read_text(encoding="utf-8")
+        assert f"GH_PANEL_TOKEN={secret}" in env_file and ".env" in (tmp_path / ".gitignore").read_text(encoding="utf-8")
+        if os.name != "nt":
+            assert (os.stat(tmp_path / ".env").st_mode & 0o777) == 0o600
+        envs = ui.api("GET", "/api/env")
+        assert {"name": "GH_PANEL_TOKEN", "set": True, "source": ".env", "in_env_file": True, "used": True} in envs["vars"]
+        for path in ("/api/env", "/api/state", "/api/config", "/api/connectors/github", "/api/chat"):
+            assert secret not in ui.raw("GET", path)[1], path  # secret values never come back
+        gh = [c for c in ui.api("GET", "/api/state")["connectors"] if c["name"] == "github"][0]
+        assert gh["status"] == "ready"
+        ui.api("PUT", "/api/env", {"name": "bad name", "value": "x"}, expect=400)
+        ui.api("PUT", "/api/env", {"name": "A", "value": "two\nlines"}, expect=400)
+        ui.api("DELETE", "/api/env/GH_PANEL_TOKEN")
+        assert "GH_PANEL_TOKEN" not in (tmp_path / ".env").read_text(encoding="utf-8")
+        # edit, toggle, delete
+        y = ui.api("GET", "/api/connectors/github")["yaml"]
+        assert "${GH_PANEL_TOKEN}" in y
+        ui.api("PUT", "/api/connectors/github", {"yaml": y.replace("GitHub: code", "GitHub repos: code")})
+        ui.api("PUT", "/api/connectors/github", {"yaml": "url: ftp://nope"}, expect=400)
+        ui.api("POST", "/api/connectors/mail/enabled", {"enabled": False})
+        assert [c for c in ui.api("GET", "/api/state")["connectors"] if c["name"] == "mail"][0]["status"] == "disabled"
+        ui.api("POST", "/api/connectors/mail/test", expect=400)  # disabled
+        ui.api("POST", "/api/connectors/mail/enabled", {"enabled": True})
+        ui.api("DELETE", "/api/connectors/github")
+        ui.api("DELETE", "/api/connectors/github", expect=400)
+        text = cfg.read_text(encoding="utf-8")
+        assert "# panel test config" in text and "lang: de-DE   # german pages" in text and "enabled: true" in text
+        # live connector test + call through the panel
+        r = ui.api("POST", "/api/connectors/mail/test")
+        assert r["ok"] and {t["name"] for t in r["tools"]} >= {"send_email", "list_tasks", "big"}
+        assert any(t["signature"].startswith("mail.send_email(to: string") for t in r["tools"])
+        r = ui.api("POST", "/api/connectors/mail/call", {"tool": "send_email", "arguments": '{"to": "a@b.c", "subject": "Привет"}'})
+        assert r["text"] == "sent to a@b.c: Привет" and r["tokens"] > 0
+        assert len(ui.api("POST", "/api/connectors/mail/call", {"tool": "big"})["text"]) <= 2000
+        assert [c for c in ui.api("GET", "/api/state")["connectors"] if c["name"] == "mail"][0]["status"] == "connected"
+        ui.api("POST", "/api/connectors/mail/authorize", expect=400)  # not an OAuth connector
+        # config editor: validate + refuse broken YAML
+        good = cfg.read_text(encoding="utf-8")
+        assert ui.api("POST", "/api/config/validate", {"text": "browser: [oops"})["ok"] is False
+        assert ui.api("POST", "/api/config/validate", {"text": good})["ok"] is True
+        ui.api("PUT", "/api/config", {"text": "browser:\n  colour: red\n"}, expect=400)
+        assert cfg.read_text(encoding="utf-8") == good
+        # browser settings keep comments
+        ui.api("PUT", "/api/browser", {"values": {"max_chars": 1500, "headed": False, "lang": "en-US", "profile_dir": ""}})
+        text = cfg.read_text(encoding="utf-8")
+        assert "max_chars: 1500" in text and "lang: en-US   # german pages" in text
+        ui.api("PUT", "/api/browser", {"values": {"colour": "red"}}, expect=400)
+        # browser preview exactly as the model sees it
+        r = ui.api("POST", "/api/preview", {"action": "open", "target": base + "/form"})
+        assert "Query" in r["text"] and r["chars"] == len(r["text"]) <= 1500 and r["max_chars"] == 1500
+        qid = int(re.search(r"\[(\d+)\] input \"Query\"", r["text"]).group(1))
+        r = ui.api("POST", "/api/preview", {"action": "type", "id": qid, "text": "capy", "submit": True})
+        assert "q=capy" in r["text"]
+        assert "Query" in ui.api("POST", "/api/preview", {"action": "back"})["text"]
+        assert "Error" in ui.api("POST", "/api/preview", {"action": "click", "id": 999})["text"]
+        ui.api("POST", "/api/preview", {"action": "open", "target": ""}, expect=400)
+        # ready-made chat configs
+        chat = {c["id"]: c for c in ui.api("GET", "/api/chat")["configs"]}
+        assert set(chat) == {"lmstudio", "claude", "codex", "cursor", "openwebui", "ollama"}
+        mcp = json.loads(chat["lmstudio"]["text"])["mcpServers"]["capybrowser"]
+        assert str(cfg) in mcp["args"] and (os.path.isabs(mcp["command"]) or mcp["command"] == "uv")
+        assert chat["codex"]["text"].startswith("[mcp_servers.capybrowser]") and str(cfg).replace("\\", "\\\\") in chat["codex"]["text"]
+    finally:
+        assert ui.stop() == 0
+
+
+@needs_browser
+@pytest.mark.skipif(os.name == "nt", reason="POSIX signals")
+@pytest.mark.parametrize("signame", ["SIGINT", "SIGTERM"])
+def test_ui_stops_cleanly(base, tmp_path, signame):
+    import signal as _s
+    import time
+
+    ui = UI(_ui_config(tmp_path))
+    ui.api("POST", "/api/connectors/mail/test")
+    ui.api("POST", "/api/preview", {"action": "open", "target": base + "/form"})
+    kids = _descendants(ui.proc.pid)
+    assert len(kids) >= 2
+    assert ui.stop(getattr(_s, signame)) == 0
+    deadline = time.time() + 10
+    alive = kids
+    while time.time() < deadline and alive:
+        out = subprocess.run(["ps", "-A", "-o", "pid=", "-o", "stat="], capture_output=True, text=True).stdout
+        alive = {int(p) for p, st in (ln.split()[:2] for ln in out.splitlines() if ln.strip()) if int(p) in kids and not st.startswith("Z")}
+        time.sleep(0.2)
+    assert not alive, alive
+    assert not list(tmp_path.glob("browser_mcp_*"))
+
+
+def test_ui_creates_template_when_missing(tmp_path):
+    target = tmp_path / "sub" / "capy.yaml"
+    proc = subprocess.Popen([sys.executable, str(ROOT / "browser_mcp.py"), "ui", "--config", str(target), "--no-open", "--port", "0"],
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        assert "CapyBrowser UI" in proc.stdout.readline().decode()
+        assert "created from template" in proc.stdout.readline().decode()
+        assert target.read_text(encoding="utf-8") == bm.CAPY_YAML_TEMPLATE
+    finally:
+        proc.terminate()
+        proc.wait(30)
