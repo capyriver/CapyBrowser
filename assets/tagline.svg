@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="40" viewBox="0 0 720 40" role="img" aria-label="Give any LLM a real browser · One link to install · Works with small local models · One capy.yaml: model + browser + MCP">
+  <style>
+    text { font-family: "JetBrains Mono", Consolas, Menlo, monospace; font-size: 17px; fill: #C97752; opacity: 0; animation: cycle 12s infinite; }
+    text:nth-of-type(2) { animation-delay: 3s; }
+    text:nth-of-type(3) { animation-delay: 6s; }
+    text:nth-of-type(4) { animation-delay: 9s; }
+    @keyframes cycle { 0%, 22% { opacity: 1; } 25%, 97% { opacity: 0; } 100% { opacity: 1; } }
+    @media (prefers-reduced-motion: reduce) { text { animation: none; } text:first-of-type { opacity: 1; } }
+  </style>
+  <text x="360" y="26" text-anchor="middle" textLength="290" lengthAdjust="spacingAndGlyphs">Give any LLM a real browser</text>
+  <text x="360" y="26" text-anchor="middle" textLength="380" lengthAdjust="spacingAndGlyphs">One link to install · no Playwright</text>
+  <text x="360" y="26" text-anchor="middle" textLength="360" lengthAdjust="spacingAndGlyphs">Works with small local models (4B)</text>
+  <text x="360" y="26" text-anchor="middle" textLength="440" lengthAdjust="spacingAndGlyphs">One capy.yaml: model + browser + MCP</text>
+</svg>

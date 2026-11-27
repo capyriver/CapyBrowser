@@ -14,7 +14,7 @@ uv run capybrowser --headed       # watch the browser while you test
 
 ## Guidelines
 
-- The server stays **one file** (`browser_mcp.py`) with **two dependencies** (`mcp`, `websockets`). Please keep it that way.
+- The server stays **one file** (`browser_mcp.py`) with **three small dependencies** (`mcp`, `websockets`, `pyyaml`). Please keep it that way.
 - Keep tool output compact: every response must fit `--max-chars` (3500 by default) because small local models depend on it.
 - New behaviour needs a test in `tests/` — preferably a tiny local HTML page in the test server rather than a live website.
 - Tests run on Windows, macOS and Linux in CI; avoid OS-specific assumptions.

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.0 — 2026-11-27
+
+- **`capy.yaml` + `capybrowser agent`**: one config file for the model (Ollama or any OpenAI-compatible API: LM Studio, llama.cpp, vLLM, OpenRouter, OpenAI), the built-in browser and any extra MCP servers. Interactive chat or one-shot tasks, no MCP app required.
+- `capybrowser init` creates a commented `capy.yaml`.
+- `${VAR}` environment expansion in the config (keep API keys out of the file).
+- New dependency: `pyyaml`.
+
 ## 1.0.0 — 2026-11-27
 
 First public release.

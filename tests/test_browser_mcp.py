@@ -291,3 +291,91 @@ def test_mcp_stdio_smoke(base):
     finally:
         proc.stdin.close()
         assert proc.wait(30) == 0
+
+
+# --------------------------------------------------------------------------- agent mode (capy.yaml)
+
+
+def test_capy_yaml_template_and_defaults(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    cfg, path = bm.load_capy_config(None)
+    assert path is None and cfg["model"]["provider"] == "ollama" and cfg["browser"]["enabled"]
+    (tmp_path / "capy.yaml").write_text(bm.CAPY_YAML_TEMPLATE, encoding="utf-8")
+    cfg, path = bm.load_capy_config(None)
+    assert path == "capy.yaml" and cfg["model"]["name"] == "qwen3:4b-instruct" and cfg["mcp_servers"] == {}
+
+
+def test_capy_yaml_env_and_validation(tmp_path, monkeypatch):
+    monkeypatch.setenv("CAPY_TEST_KEY", "secret123")
+    f = tmp_path / "c.yaml"
+    f.write_text("model:\n  provider: openai\n  name: m\n  api_key: ${CAPY_TEST_KEY}\n", encoding="utf-8")
+    cfg, _ = bm.load_capy_config(str(f))
+    assert cfg["model"]["api_key"] == "secret123" and cfg["model"]["base_url"].endswith("/v1")
+    for bad in ("model:\n  provider: gemini\n", "mcp_servers:\n  x: {args: [1]}\n", "- a list\n"):
+        f.write_text(bad, encoding="utf-8")
+        with pytest.raises(ValueError):
+            bm.load_capy_config(str(f))
+    with pytest.raises(FileNotFoundError):
+        bm.load_capy_config(str(tmp_path / "missing.yaml"))
+
+
+class _FakeModel(BaseHTTPRequestHandler):
+    """Scripted model: first asks for open_url, then answers with what the page said."""
+
+    protocol_version = "HTTP/1.1"
+    target = ""
+
+    def log_message(self, *a):
+        pass
+
+    def do_POST(self):
+        body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        tool_msgs = [m for m in body["messages"] if m["role"] == "tool"]
+        names = {t["function"]["name"] for t in body.get("tools", [])}
+        if self.path.endswith("/chat/completions"):  # OpenAI-compatible
+            if not tool_msgs:
+                msg = {"role": "assistant", "content": None, "tool_calls": [{"id": "c1", "type": "function", "function": {
+                    "name": "open_url", "arguments": json.dumps({"url": self.target})}}]}
+            else:
+                msg = {"role": "assistant", "content": "SAW:" + ("ECHO" if "ECHO" in tool_msgs[-1]["content"] else "nothing")}
+            out = {"choices": [{"message": msg}]}
+        else:  # Ollama
+            if not tool_msgs:
+                msg = {"role": "assistant", "content": "", "tool_calls": [{"function": {"name": "open_url", "arguments": {"url": self.target}}}]}
+            else:
+                msg = {"role": "assistant", "content": "SAW:" + ("ECHO" if "ECHO" in tool_msgs[-1]["content"] else "nothing")}
+            out = {"message": msg}
+        out["tools_seen"] = sorted(names)
+        data = json.dumps(out).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+
+@needs_browser
+@pytest.mark.parametrize("provider,suffix", [("ollama", ""), ("openai", "/v1")])
+def test_agent_end_to_end_with_fake_model(base, tmp_path, provider, suffix):
+    _FakeModel.target = base + "/echo?from=agent"
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), _FakeModel)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        cfg_file = tmp_path / "capy.yaml"
+        cfg_file.write_text(f"model:\n  provider: {provider}\n  name: fake\n  base_url: http://127.0.0.1:{srv.server_address[1]}{suffix}\n"
+                            "browser:\n  lang: en-US\n", encoding="utf-8")
+        out = subprocess.run([sys.executable, str(ROOT / "browser_mcp.py"), "agent", "-c", str(cfg_file), "open the echo page"],
+                             capture_output=True, text=True, timeout=180)
+        assert out.returncode == 0, out.stderr
+        assert out.stdout.strip() == "SAW:ECHO", (out.stdout, out.stderr)
+        assert "-> open_url" in out.stderr and "browser: 6 tools" in out.stderr
+    finally:
+        srv.shutdown()
+
+
+def test_init_creates_template(tmp_path):
+    target = tmp_path / "capy.yaml"
+    out = subprocess.run([sys.executable, str(ROOT / "browser_mcp.py"), "init", str(target)], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0 and target.read_text(encoding="utf-8") == bm.CAPY_YAML_TEMPLATE
+    again = subprocess.run([sys.executable, str(ROOT / "browser_mcp.py"), "init", str(target)], capture_output=True, text=True, timeout=60)
+    assert again.returncode != 0
