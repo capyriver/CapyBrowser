@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.svg" width="120" height="120" alt="CapyBrowser logo" />
+  <img src="assets/banner.svg" width="100%" alt="CapyBrowser: give any LLM a real browser" />
 </p>
 
 <h1 align="center">CapyBrowser</h1>
@@ -21,10 +21,6 @@
   <img src="https://img.shields.io/badge/Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-supported-C97752" alt="Windows, macOS, Linux" />
   <img src="https://img.shields.io/badge/license-MIT-C97752" alt="MIT License" />
   <a href="https://t.me/CapyRiver"><img src="https://img.shields.io/badge/Telegram-CapyRiver-26A5E4?logo=telegram&logoColor=white" alt="Telegram" /></a>
-</p>
-
-<p align="center">
-  <img src="assets/banner.svg" width="100%" alt="CapyBrowser banner: give any LLM a real browser" />
 </p>
 
 ---
@@ -354,7 +350,7 @@ browser_mcp.py          the whole server (also runnable as a single PEP 723 scri
 pyproject.toml          package metadata and the `capybrowser` command
 examples/               MCP configs for popular apps and an Ollama agent
 tests/                  pytest suite (runs on Windows, macOS and Linux in CI)
-assets/                 logo and banner
+assets/                 banner
 ```
 
 Before the first release the server went through more than 40,000 automated checks: fuzzing on thousands of generated and broken HTML pages, connect/disconnect and crash/kill cycles with leak and zombie-process checks, invalid arguments over the real MCP protocol, and end-to-end runs where a 4B local model completed real tasks on live websites.
