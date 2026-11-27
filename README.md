@@ -2,25 +2,38 @@
   <img src="assets/banner.svg" width="100%" alt="CapyBrowser: give any LLM a real browser" />
 </p>
 
-<h1 align="center">CapyBrowser</h1>
-
 <p align="center">
-  <strong>Give any LLM a real browser.</strong><br />
   A single-file MCP server that drives your system Chrome / Edge / Brave / Chromium over the DevTools Protocol.<br />
   No Playwright. No Selenium. No Puppeteer. One link to install.
 </p>
 
 <p align="center">
-  <a href="#en">English</a> &nbsp;·&nbsp; <a href="#zh">简体中文</a> &nbsp;·&nbsp; <a href="#ru">Русский</a> &nbsp;·&nbsp; <a href="#kk">Қазақша</a>
+  <a href="#quick-start"><img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-start.png" width="22" height="22" alt="" /> Quick start</a>
+  &nbsp;·&nbsp;
+  <a href="#connect-to-your-app"><img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-phone.png" width="22" height="22" alt="" /> Setup</a>
+  &nbsp;·&nbsp;
+  <a href="#faq"><img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-motion.png" width="22" height="22" alt="" /> FAQ</a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/capyriver"><img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-code.png" width="22" height="22" alt="" /> CapyRiver</a>
+  &nbsp;·&nbsp;
+  <a href="https://t.me/CapyRiver"><img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-open.png" width="22" height="22" alt="" /> Telegram</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/capyriver/CapyBrowser/actions/workflows/ci.yml"><img src="https://github.com/capyriver/CapyBrowser/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
-  <img src="https://img.shields.io/badge/python-3.10%2B-C97752" alt="Python 3.10+" />
-  <img src="https://img.shields.io/badge/MCP-stdio-C97752" alt="MCP stdio" />
-  <img src="https://img.shields.io/badge/Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-supported-C97752" alt="Windows, macOS, Linux" />
-  <img src="https://img.shields.io/badge/license-MIT-C97752" alt="MIT License" />
-  <a href="https://t.me/CapyRiver"><img src="https://img.shields.io/badge/Telegram-CapyRiver-26A5E4?logo=telegram&logoColor=white" alt="Telegram" /></a>
+  <img src="https://readme-typing-svg.demolab.com/?font=JetBrains%20Mono&weight=500&size=17&duration=2800&pause=900&color=C97752&center=true&vCenter=true&width=720&height=42&lines=Give+any+LLM+a+real+browser;One+link+to+install+%E2%80%94+no+Playwright;Works+with+small+local+models+(4B);Chrome+%C2%B7+Edge+%C2%B7+Brave+%C2%B7+Chromium" alt="Give any LLM a real browser · One link to install · Works with small local models · Chrome, Edge, Brave, Chromium" />
+</p>
+
+<p align="center">
+  🌍 <a href="#en"><b>English</b></a> &nbsp;·&nbsp; <a href="#zh"><b>简体中文</b></a> &nbsp;·&nbsp; <a href="#ru"><b>Русский</b></a> &nbsp;·&nbsp; <a href="#kk"><b>Қазақша</b></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/capyriver/CapyBrowser/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/capyriver/CapyBrowser/ci.yml?branch=main&style=flat-square&label=tests&color=C97752" alt="Tests" /></a>
+  <a href="https://github.com/capyriver/CapyBrowser/stargazers"><img src="https://img.shields.io/github/stars/capyriver/CapyBrowser?style=flat-square&color=C97752" alt="Stars" /></a>
+  <img src="https://img.shields.io/badge/python-3.10%2B-C97752?style=flat-square" alt="Python 3.10+" />
+  <img src="https://img.shields.io/badge/MCP-stdio-C97752?style=flat-square" alt="MCP stdio" />
+  <img src="https://img.shields.io/badge/Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-C97752?style=flat-square" alt="Windows, macOS, Linux" />
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-C97752?style=flat-square" alt="MIT License" /></a>
 </p>
 
 ---
@@ -29,7 +42,7 @@
 
 ## English
 
-### What is it?
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-monitor.png" width="26" height="26" alt="" align="absmiddle" /> What is it?
 
 CapyBrowser is an [MCP](https://modelcontextprotocol.io) server. You plug it into an AI app (Claude Desktop, Claude Code, Cursor, VS Code, LM Studio, your own Ollama agent…) and the model gets a browser it can actually use: search the web, open pages, read them, click buttons, fill in forms, scroll and go back.
 
@@ -52,7 +65,7 @@ Password
 
 The model answers with `type_text(3, "admin")`, `click(5)` — and a real browser does it.
 
-### Why CapyBrowser
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-chart.png" width="26" height="26" alt="" align="absmiddle" /> Why CapyBrowser
 
 | | CapyBrowser | Typical browser MCP servers |
 |---|---|---|
@@ -62,7 +75,7 @@ The model answers with `type_text(3, "admin")`, `click(5)` — and a real browse
 | Output for the model | compact text + `[id]` list, hard size limit | raw accessibility trees or screenshots, often 10–50k tokens |
 | Small local models | designed and tested with a 4B model | usually need a large cloud model |
 
-### Features
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-layers.png" width="26" height="26" alt="" align="absmiddle" /> Features
 
 - **6 tools:** `web_search`, `open_url`, `click`, `type_text`, `scroll`, `go_back`.
 - **Finds your browser automatically** on Windows, macOS and Linux (Chrome, Edge, Brave, Chromium, Vivaldi; stable, beta, dev, Canary, Snap, Flatpak).
@@ -73,7 +86,9 @@ The model answers with `type_text(3, "admin")`, `click(5)` — and a real browse
 - **Leaves nothing behind:** the browser process tree and its temporary profile are removed on exit, Ctrl+C and `SIGTERM`; leftovers from a hard kill are cleaned up on the next start.
 - **Safe defaults:** DevTools listens on `127.0.0.1` only; `file://`, `javascript:` and `chrome://` URLs are refused (`file://` can be enabled explicitly).
 
-### Quick start
+<a id="quick-start"></a>
+
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-start.png" width="26" height="26" alt="" align="absmiddle" /> Quick start
 
 **1. Install `uv`** (a fast Python package manager; it also installs Python for you):
 
@@ -104,7 +119,9 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 Restart the app and ask: *"Search the web for the latest Python release and open the official page."*
 
-### Connect to your app
+<a id="connect-to-your-app"></a>
+
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-phone.png" width="26" height="26" alt="" align="absmiddle" /> Connect to your app
 
 <details open>
 <summary><b>Claude Desktop</b></summary>
@@ -188,7 +205,7 @@ uv run https://raw.githubusercontent.com/capyriver/CapyBrowser/main/examples/oll
 Set `OLLAMA_MODEL` to use another model (Qwen 3, Llama 3.1+, Mistral, Gemma 3 and other models with tool support).
 </details>
 
-### Other ways to install
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-open.png" width="26" height="26" alt="" align="absmiddle" /> Other ways to install
 
 ```bash
 # Run without installing (always the latest version from GitHub)
@@ -206,7 +223,7 @@ uv run browser_mcp.py
 
 After `uv tool install`, the MCP config can simply be `"command": "capybrowser"` with no arguments. Update with `uv tool upgrade capybrowser`.
 
-### Tools
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-palette.png" width="26" height="26" alt="" align="absmiddle" /> Tools
 
 | Tool | Arguments | What it does |
 |---|---|---|
@@ -219,7 +236,7 @@ After `uv tool install`, the MCP config can simply be `"command": "capybrowser"`
 
 Every tool returns the updated page, so the model always sees the result of its action. IDs are renumbered after every action, and errors come back as plain-text messages the model can recover from (for example *"element [12] not found — use an id from this list"* followed by the current page).
 
-### Options
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-recipe.png" width="26" height="26" alt="" align="absmiddle" /> Options
 
 | Flag | Environment variable | Default | Meaning |
 |---|---|---|---|
@@ -233,7 +250,7 @@ Every tool returns the updated page, so the model always sees the result of its 
 
 Example with options: [`examples/advanced_config.json`](examples/advanced_config.json).
 
-### How it works
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-data.png" width="26" height="26" alt="" align="absmiddle" /> How it works
 
 1. The MCP client starts `capybrowser` and talks to it over stdio.
 2. On the first tool call, CapyBrowser finds your browser and starts it with `--remote-debugging-port` on a free local port and a temporary `--user-data-dir` (headless by default; `--no-sandbox` is added automatically for root/containers on Linux).
@@ -241,14 +258,16 @@ Example with options: [`examples/advanced_config.json`](examples/advanced_config
 4. A small script inside the page marks the visible clickable elements with `data-mcp-id` and extracts the readable text from the current scroll position; the result is trimmed to the size limit.
 5. On exit the whole browser process tree is killed and the temporary profile is deleted.
 
-### Security
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-check.png" width="26" height="26" alt="" align="absmiddle" /> Security
 
 - The model gets a **separate browser with an empty profile**: no access to your usual cookies, logins, passwords or extensions.
 - DevTools is bound to `127.0.0.1`; nothing is exposed to the network.
 - Web pages may contain text written to manipulate AI agents (prompt injection). Do not let an agent act on bank, email or work accounts unattended.
 - More details: [SECURITY.md](SECURITY.md).
 
-### FAQ
+<a id="faq"></a>
+
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-motion.png" width="26" height="26" alt="" align="absmiddle" /> FAQ
 
 <details>
 <summary><b>Why do I need this? My chatbot can already search the web.</b></summary>
@@ -322,7 +341,7 @@ The model can call `scroll` to read further; every page view says how much of th
 With `uvx --from git+…` you get the latest version on every start (uv caches it; `uv cache clean` forces a refresh). With `uv tool install`, run `uv tool upgrade capybrowser`.
 </details>
 
-### Troubleshooting
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-monitor.png" width="26" height="26" alt="" align="absmiddle" /> Troubleshooting
 
 | Problem | Fix |
 |---|---|
@@ -333,7 +352,7 @@ With `uvx --from git+…` you get the latest version on every start (uv caches i
 | Pages load slowly | Raise `BROWSER_MCP_NAV_TIMEOUT` (seconds). |
 | You want to see logs | Add `--log-level INFO`; logs go to stderr (in Claude Desktop: Settings → Developer → Open Logs Folder). |
 
-### Development
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-code.png" width="26" height="26" alt="" align="absmiddle" /> Development
 
 ```bash
 git clone https://github.com/capyriver/CapyBrowser
@@ -350,12 +369,12 @@ browser_mcp.py          the whole server (also runnable as a single PEP 723 scri
 pyproject.toml          package metadata and the `capybrowser` command
 examples/               MCP configs for popular apps and an Ollama agent
 tests/                  pytest suite (runs on Windows, macOS and Linux in CI)
-assets/                 banner
+assets/                 banner and social preview image
 ```
 
 Before the first release the server went through more than 40,000 automated checks: fuzzing on thousands of generated and broken HTML pages, connect/disconnect and crash/kill cycles with leak and zombie-process checks, invalid arguments over the real MCP protocol, and end-to-end runs where a 4B local model completed real tasks on live websites.
 
-### License
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-recipe.png" width="26" height="26" alt="" align="absmiddle" /> License
 
 MIT — see [LICENSE](LICENSE). Not affiliated with Google, Microsoft, Brave or Anthropic.
 
@@ -365,7 +384,7 @@ MIT — see [LICENSE](LICENSE). Not affiliated with Google, Microsoft, Brave or 
 
 ## 简体中文
 
-### 这是什么？
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-monitor.png" width="26" height="26" alt="" align="absmiddle" /> 这是什么？
 
 CapyBrowser 是一个 [MCP](https://modelcontextprotocol.io) 服务器。把它接入 AI 应用（Claude Desktop、Claude Code、Cursor、VS Code、LM Studio、你自己的 Ollama 智能体……），模型就能真正使用浏览器：搜索网页、打开页面、阅读内容、点击按钮、填写表单、滚动和后退。
 
@@ -385,7 +404,7 @@ Password
 
 模型只需回复 `type_text(3, "admin")`、`click(5)`，真实的浏览器就会执行。
 
-### 为什么选择 CapyBrowser
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-chart.png" width="26" height="26" alt="" align="absmiddle" /> 为什么选择 CapyBrowser
 
 | | CapyBrowser | 常见的浏览器 MCP 服务器 |
 |---|---|---|
@@ -395,7 +414,7 @@ Password
 | 给模型的输出 | 精简文本 + `[id]` 列表，严格长度限制 | 原始无障碍树或截图，常常 1–5 万 token |
 | 小型本地模型 | 专门设计并用 4B 模型测试 | 通常需要大型云端模型 |
 
-### 功能
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-layers.png" width="26" height="26" alt="" align="absmiddle" /> 功能
 
 - **6 个工具：** `web_search`、`open_url`、`click`、`type_text`、`scroll`、`go_back`。
 - **自动查找浏览器**：支持 Windows、macOS、Linux（Chrome、Edge、Brave、Chromium、Vivaldi；稳定版、Beta、Dev、Canary、Snap、Flatpak）。
@@ -406,7 +425,7 @@ Password
 - **不留痕迹**：退出、Ctrl+C 和 `SIGTERM` 时会结束整个浏览器进程树并删除临时配置；被强制结束后残留的文件会在下次启动时清理。
 - **安全默认值**：DevTools 只监听 `127.0.0.1`；拒绝 `file://`、`javascript:`、`chrome://` 链接（`file://` 可以显式开启）。
 
-### 快速开始
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-start.png" width="26" height="26" alt="" align="absmiddle" /> 快速开始
 
 **1. 安装 `uv`**（快速的 Python 包管理器，也会自动为你安装 Python）：
 
@@ -437,7 +456,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 重启应用后试着问：*“搜索 Python 的最新版本并打开官方页面。”*
 
-### 接入应用
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-phone.png" width="26" height="26" alt="" align="absmiddle" /> 接入应用
 
 - **Claude Desktop：** 设置 → 开发者 → 编辑配置，或直接打开 `%APPDATA%\Claude\claude_desktop_config.json`（Windows）/ `~/Library/Application Support/Claude/claude_desktop_config.json`（macOS），粘贴上面的 JSON 并重启。
 - **Claude Code：** `claude mcp add capybrowser -- uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser`（加 `-s user` 可用于所有项目）。
@@ -452,7 +471,7 @@ ollama pull qwen3:4b-instruct
 uv run https://raw.githubusercontent.com/capyriver/CapyBrowser/main/examples/ollama_agent.py "打开 https://news.ycombinator.com 告诉我排名第一的新闻"
 ```
 
-### 其他安装方式
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-open.png" width="26" height="26" alt="" align="absmiddle" /> 其他安装方式
 
 ```bash
 uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser     # 无需安装，始终是最新版本
@@ -463,7 +482,7 @@ uv run https://raw.githubusercontent.com/capyriver/CapyBrowser/main/browser_mcp.
 
 使用 `uv tool install` 后，MCP 配置可以简化为 `"command": "capybrowser"`。升级：`uv tool upgrade capybrowser`。
 
-### 工具
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-palette.png" width="26" height="26" alt="" align="absmiddle" /> 工具
 
 | 工具 | 参数 | 作用 |
 |---|---|---|
@@ -476,7 +495,7 @@ uv run https://raw.githubusercontent.com/capyriver/CapyBrowser/main/browser_mcp.
 
 每个工具都会返回更新后的页面。每次操作后 ID 会重新编号；错误以纯文本返回，模型可以据此继续。
 
-### 选项
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-recipe.png" width="26" height="26" alt="" align="absmiddle" /> 选项
 
 | 参数 | 环境变量 | 默认值 | 说明 |
 |---|---|---|---|
@@ -488,7 +507,7 @@ uv run https://raw.githubusercontent.com/capyriver/CapyBrowser/main/browser_mcp.
 | — | `BROWSER_MCP_NAV_TIMEOUT` | `25` | 页面加载等待秒数。 |
 | `--log-level` | `BROWSER_MCP_LOG` | `WARNING` | 日志级别（输出到 stderr）。 |
 
-### 常见问题
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-motion.png" width="26" height="26" alt="" align="absmiddle" /> 常见问题
 
 <details>
 <summary><b>聊天机器人已经能联网搜索了，为什么还需要它？</b></summary>
@@ -550,7 +569,7 @@ Chrome、Edge、Brave、Chromium、Vivaldi（含 Beta/Dev/Canary、Snap、Flatpa
 模型可以调用 `scroll` 继续阅读；每个页面视图都会显示已查看的比例。对于大上下文模型，可以用 `--max-chars 8000` 提高上限。
 </details>
 
-### 故障排除
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-monitor.png" width="26" height="26" alt="" align="absmiddle" /> 故障排除
 
 | 问题 | 解决方法 |
 |---|---|
@@ -560,11 +579,11 @@ Chrome、Edge、Brave、Chromium、Vivaldi（含 Beta/Dev/Canary、Snap、Flatpa
 | 页面加载慢 | 增大 `BROWSER_MCP_NAV_TIMEOUT`。 |
 | 查看日志 | 添加 `--log-level INFO`，日志输出到 stderr。 |
 
-### 安全
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-check.png" width="26" height="26" alt="" align="absmiddle" /> 安全
 
 模型使用的是**独立的、空配置的浏览器**，无法访问你的 Cookie、登录状态、密码和扩展。DevTools 只绑定 `127.0.0.1`。网页可能包含诱导 AI 的文字（提示注入），请勿让智能体在无人看管的情况下操作银行、邮箱或工作账号。详见 [SECURITY.md](SECURITY.md)。
 
-### 许可证
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-recipe.png" width="26" height="26" alt="" align="absmiddle" /> 许可证
 
 MIT，见 [LICENSE](LICENSE)。本项目与 Google、Microsoft、Brave、Anthropic 无关联。
 
@@ -574,7 +593,7 @@ MIT，见 [LICENSE](LICENSE)。本项目与 Google、Microsoft、Brave、Anthrop
 
 ## Русский
 
-### Что это?
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-monitor.png" width="26" height="26" alt="" align="absmiddle" /> Что это?
 
 CapyBrowser — это [MCP](https://modelcontextprotocol.io)-сервер. Подключаете его к AI-приложению (Claude Desktop, Claude Code, Cursor, VS Code, LM Studio, свой агент на Ollama…) — и модель получает настоящий браузер: ищет в интернете, открывает страницы, читает их, нажимает кнопки, заполняет формы, листает и возвращается назад.
 
@@ -594,7 +613,7 @@ Password
 
 Модель отвечает `type_text(3, "admin")`, `click(5)` — и настоящий браузер это делает.
 
-### Почему CapyBrowser
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-chart.png" width="26" height="26" alt="" align="absmiddle" /> Почему CapyBrowser
 
 | | CapyBrowser | Обычные браузерные MCP-серверы |
 |---|---|---|
@@ -604,7 +623,7 @@ Password
 | Что видит модель | компактный текст + список `[id]`, жёсткий лимит размера | сырое дерево доступности или скриншоты, часто 10–50 тыс. токенов |
 | Маленькие локальные модели | сделан и протестирован на 4B-модели | обычно нужна большая облачная модель |
 
-### Возможности
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-layers.png" width="26" height="26" alt="" align="absmiddle" /> Возможности
 
 - **6 инструментов:** `web_search`, `open_url`, `click`, `type_text`, `scroll`, `go_back`.
 - **Сам находит браузер** на Windows, macOS и Linux (Chrome, Edge, Brave, Chromium, Vivaldi; stable, beta, dev, Canary, Snap, Flatpak).
@@ -615,7 +634,7 @@ Password
 - **Не оставляет мусора:** при выходе, Ctrl+C и `SIGTERM` завершается всё дерево процессов браузера и удаляется временный профиль; остатки после жёсткого убийства чистятся при следующем запуске.
 - **Безопасные настройки по умолчанию:** DevTools слушает только `127.0.0.1`; ссылки `file://`, `javascript:` и `chrome://` запрещены (`file://` можно включить явно).
 
-### Быстрый старт
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-start.png" width="26" height="26" alt="" align="absmiddle" /> Быстрый старт
 
 **1. Установите `uv`** (быстрый менеджер пакетов Python; он сам поставит и Python):
 
@@ -646,7 +665,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 Перезапустите приложение и попросите: *«Найди в интернете последнюю версию Python и открой официальную страницу».*
 
-### Подключение к приложениям
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-phone.png" width="26" height="26" alt="" align="absmiddle" /> Подключение к приложениям
 
 <details open>
 <summary><b>Claude Desktop</b></summary>
@@ -730,7 +749,7 @@ uv run https://raw.githubusercontent.com/capyriver/CapyBrowser/main/examples/oll
 Другую модель задайте через `OLLAMA_MODEL` (Qwen 3, Llama 3.1+, Mistral, Gemma 3 и другие модели с поддержкой инструментов).
 </details>
 
-### Другие способы установки
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-open.png" width="26" height="26" alt="" align="absmiddle" /> Другие способы установки
 
 ```bash
 # Запуск без установки (всегда свежая версия с GitHub)
@@ -748,7 +767,7 @@ uv run browser_mcp.py
 
 После `uv tool install` в конфиге MCP достаточно `"command": "capybrowser"` без аргументов. Обновление — `uv tool upgrade capybrowser`.
 
-### Инструменты
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-palette.png" width="26" height="26" alt="" align="absmiddle" /> Инструменты
 
 | Инструмент | Аргументы | Что делает |
 |---|---|---|
@@ -761,7 +780,7 @@ uv run browser_mcp.py
 
 Каждый инструмент возвращает обновлённую страницу, так что модель сразу видит результат своего действия. Номера `[id]` пересчитываются после каждого действия, а ошибки приходят понятным текстом, с которым модель может продолжить (например, *«элемент [12] не найден — используйте id из этого списка»* и текущая страница).
 
-### Параметры
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-recipe.png" width="26" height="26" alt="" align="absmiddle" /> Параметры
 
 | Флаг | Переменная окружения | По умолчанию | Что делает |
 |---|---|---|---|
@@ -775,7 +794,7 @@ uv run browser_mcp.py
 
 Пример с параметрами: [`examples/advanced_config.json`](examples/advanced_config.json).
 
-### Как это работает
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-data.png" width="26" height="26" alt="" align="absmiddle" /> Как это работает
 
 1. MCP-клиент запускает `capybrowser` и общается с ним через stdio.
 2. При первом вызове инструмента CapyBrowser находит браузер и запускает его с `--remote-debugging-port` на свободном локальном порту и временным `--user-data-dir` (по умолчанию без окна; на Linux под root/в контейнере автоматически добавляется `--no-sandbox`).
@@ -783,14 +802,14 @@ uv run browser_mcp.py
 4. Небольшой скрипт внутри страницы помечает видимые кликабельные элементы атрибутом `data-mcp-id` и собирает читаемый текст с текущего места прокрутки; результат обрезается до лимита.
 5. При выходе завершается всё дерево процессов браузера и удаляется временный профиль.
 
-### Безопасность
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-check.png" width="26" height="26" alt="" align="absmiddle" /> Безопасность
 
 - Модель получает **отдельный браузер с пустым профилем**: без ваших обычных cookies, входов в аккаунты, паролей и расширений.
 - DevTools привязан к `127.0.0.1`, в сеть ничего не открывается.
 - На страницах может быть текст, написанный специально, чтобы манипулировать AI-агентами (prompt injection). Не оставляйте агента без присмотра в банке, почте или рабочих аккаунтах.
 - Подробнее: [SECURITY.md](SECURITY.md).
 
-### Вопросы и ответы
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-motion.png" width="26" height="26" alt="" align="absmiddle" /> Вопросы и ответы
 
 <details>
 <summary><b>Зачем это нужно, если чат-бот и так умеет искать в интернете?</b></summary>
@@ -864,7 +883,7 @@ Google Chrome, Microsoft Edge, Brave, Chromium и Vivaldi (включая beta/d
 С `uvx --from git+…` при каждом запуске берётся свежая версия (uv её кэширует; `uv cache clean` принудительно обновит). С `uv tool install` — `uv tool upgrade capybrowser`.
 </details>
 
-### Решение проблем
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-monitor.png" width="26" height="26" alt="" align="absmiddle" /> Решение проблем
 
 | Проблема | Что сделать |
 |---|---|
@@ -875,7 +894,7 @@ Google Chrome, Microsoft Edge, Brave, Chromium и Vivaldi (включая beta/d
 | Страницы долго грузятся | Увеличьте `BROWSER_MCP_NAV_TIMEOUT` (в секундах). |
 | Нужны логи | Добавьте `--log-level INFO`; логи пишутся в stderr (в Claude Desktop: Настройки → Разработчик → Open Logs Folder). |
 
-### Разработка
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-code.png" width="26" height="26" alt="" align="absmiddle" /> Разработка
 
 ```bash
 git clone https://github.com/capyriver/CapyBrowser
@@ -887,7 +906,7 @@ uv run capybrowser --headed       # запуск из исходников
 
 Перед первым релизом сервер прошёл больше 40 000 автоматических проверок: фаззинг на тысячах сгенерированных и битых HTML-страниц, циклы подключения/отключения и убийства процессов с проверкой утечек и зомби-процессов, некорректные аргументы через настоящий MCP-протокол и сквозные прогоны, где локальная 4B-модель выполняла реальные задачи на живых сайтах.
 
-### Лицензия
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-recipe.png" width="26" height="26" alt="" align="absmiddle" /> Лицензия
 
 MIT — см. [LICENSE](LICENSE). Проект не связан с Google, Microsoft, Brave или Anthropic.
 
@@ -897,7 +916,7 @@ MIT — см. [LICENSE](LICENSE). Проект не связан с Google, Micr
 
 ## Қазақша
 
-### Бұл не?
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-monitor.png" width="26" height="26" alt="" align="absmiddle" /> Бұл не?
 
 CapyBrowser — [MCP](https://modelcontextprotocol.io) сервері. Оны AI қолданбасына (Claude Desktop, Claude Code, Cursor, VS Code, LM Studio, Ollama негізіндегі өз агентіңіз…) қоссаңыз, модель нағыз браузерді пайдалана алады: интернеттен іздейді, беттерді ашады, оқиды, батырмаларды басады, формаларды толтырады, бетті айналдырады және артқа қайтады.
 
@@ -917,7 +936,7 @@ Password
 
 Модель `type_text(3, "admin")`, `click(5)` деп жауап береді — ал нағыз браузер оны орындайды.
 
-### Неге CapyBrowser
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-chart.png" width="26" height="26" alt="" align="absmiddle" /> Неге CapyBrowser
 
 | | CapyBrowser | Әдеттегі браузер MCP серверлері |
 |---|---|---|
@@ -927,7 +946,7 @@ Password
 | Модельге берілетін нәтиже | ықшам мәтін + `[id]` тізімі, қатаң көлем шегі | шикі қолжетімділік ағашы не скриншоттар, жиі 10–50 мың токен |
 | Шағын жергілікті модельдер | 4B модельмен жасалып, тексерілген | әдетте үлкен бұлттық модель керек |
 
-### Мүмкіндіктері
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-layers.png" width="26" height="26" alt="" align="absmiddle" /> Мүмкіндіктері
 
 - **6 құрал:** `web_search`, `open_url`, `click`, `type_text`, `scroll`, `go_back`.
 - **Браузерді өзі табады** — Windows, macOS және Linux жүйелерінде (Chrome, Edge, Brave, Chromium, Vivaldi; stable, beta, dev, Canary, Snap, Flatpak).
@@ -938,7 +957,7 @@ Password
 - **Артында қоқыс қалдырмайды:** шыққанда, Ctrl+C және `SIGTERM` кезінде браузердің бүкіл процестер ағашы тоқтатылып, уақытша профиль өшіріледі; күшпен тоқтатылғаннан кейінгі қалдықтар келесі іске қосуда тазаланады.
 - **Қауіпсіз әдепкі баптаулар:** DevTools тек `127.0.0.1` мекенжайын тыңдайды; `file://`, `javascript:` және `chrome://` сілтемелеріне тыйым салынған (`file://` анық түрде қосуға болады).
 
-### Жылдам бастау
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-start.png" width="26" height="26" alt="" align="absmiddle" /> Жылдам бастау
 
 **1. `uv` орнатыңыз** (Python үшін жылдам пакет менеджері; Python-ды да өзі орнатады):
 
@@ -969,7 +988,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 Қолданбаны қайта іске қосып, сұраңыз: *«Python-ның соңғы нұсқасын интернеттен тауып, ресми бетін аш».*
 
-### Қолданбаларға қосу
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-phone.png" width="26" height="26" alt="" align="absmiddle" /> Қолданбаларға қосу
 
 - **Claude Desktop:** Баптаулар → Developer → Edit Config, немесе файлды тікелей ашыңыз: `%APPDATA%\Claude\claude_desktop_config.json` (Windows) / `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS). Жоғарыдағы JSON-ды қойып, қолданбаны қайта іске қосыңыз.
 - **Claude Code:** `claude mcp add capybrowser -- uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser` (барлық жобаларға `-s user` қосыңыз).
@@ -984,7 +1003,7 @@ ollama pull qwen3:4b-instruct
 uv run https://raw.githubusercontent.com/capyriver/CapyBrowser/main/examples/ollama_agent.py "https://news.ycombinator.com ашып, бірінші жаңалықты айт"
 ```
 
-### Басқа орнату тәсілдері
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-open.png" width="26" height="26" alt="" align="absmiddle" /> Басқа орнату тәсілдері
 
 ```bash
 uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser     # орнатусыз, әрқашан соңғы нұсқа
@@ -995,7 +1014,7 @@ uv run https://raw.githubusercontent.com/capyriver/CapyBrowser/main/browser_mcp.
 
 `uv tool install` кейін MCP баптауында `"command": "capybrowser"` жеткілікті. Жаңарту: `uv tool upgrade capybrowser`.
 
-### Құралдар
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-palette.png" width="26" height="26" alt="" align="absmiddle" /> Құралдар
 
 | Құрал | Аргументтер | Не істейді |
 |---|---|---|
@@ -1008,7 +1027,7 @@ uv run https://raw.githubusercontent.com/capyriver/CapyBrowser/main/browser_mcp.
 
 Әр құрал жаңартылған бетті қайтарады. `[id]` нөмірлері әр әрекеттен кейін қайта беріледі; қателер модель жалғастыра алатын қарапайым мәтінмен келеді.
 
-### Параметрлер
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-recipe.png" width="26" height="26" alt="" align="absmiddle" /> Параметрлер
 
 | Жалауша | Орта айнымалысы | Әдепкі | Мағынасы |
 |---|---|---|---|
@@ -1020,7 +1039,7 @@ uv run https://raw.githubusercontent.com/capyriver/CapyBrowser/main/browser_mcp.
 | — | `BROWSER_MCP_NAV_TIMEOUT` | `25` | Беттің жүктелуін қанша секунд күту. |
 | `--log-level` | `BROWSER_MCP_LOG` | `WARNING` | Лог деңгейі (stderr-ге жазылады). |
 
-### Жиі қойылатын сұрақтар
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-motion.png" width="26" height="26" alt="" align="absmiddle" /> Жиі қойылатын сұрақтар
 
 <details>
 <summary><b>Чат-бот онсыз да интернеттен іздей алса, бұл не үшін керек?</b></summary>
@@ -1076,7 +1095,7 @@ Chrome, Edge, Brave, Chromium, Vivaldi (beta/dev/Canary, Snap, Flatpak қоса)
 Модель әрі қарай оқу үшін `scroll` шақырады; әр жауапта беттің қанша бөлігі қаралғаны жазылады. Үлкен контексті модель үшін шекті `--max-chars 8000` арқылы көтеруге болады.
 </details>
 
-### Мәселелерді шешу
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-monitor.png" width="26" height="26" alt="" align="absmiddle" /> Мәселелерді шешу
 
 | Мәселе | Не істеу керек |
 |---|---|
@@ -1086,16 +1105,28 @@ Chrome, Edge, Brave, Chromium, Vivaldi (beta/dev/Canary, Snap, Flatpak қоса)
 | Беттер баяу жүктеледі | `BROWSER_MCP_NAV_TIMEOUT` мәнін үлкейтіңіз. |
 | Лог керек | `--log-level INFO` қосыңыз; логтар stderr-ге жазылады. |
 
-### Қауіпсіздік
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-check.png" width="26" height="26" alt="" align="absmiddle" /> Қауіпсіздік
 
 Модель **бос профилі бар бөлек браузер** алады: әдеттегі cookie, аккаунтқа кірулер, құпиясөздер мен кеңейтімдерге қолы жетпейді. DevTools тек `127.0.0.1` мекенжайына байланған. Беттерде ЖИ агенттерін алдауға арналған мәтін болуы мүмкін (prompt injection) — агентті банк, пошта не жұмыс аккаунттарында қараусыз қалдырмаңыз. Толығырақ: [SECURITY.md](SECURITY.md).
 
-### Лицензия
+### <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-recipe.png" width="26" height="26" alt="" align="absmiddle" /> Лицензия
 
 MIT — [LICENSE](LICENSE) қараңыз. Жоба Google, Microsoft, Brave немесе Anthropic компанияларымен байланысты емес.
 
 ---
 
 <p align="center">
-  Made with ☕ by <a href="https://github.com/capyriver">CapyRiver</a> · <a href="https://t.me/CapyRiver">Telegram</a> · <a href="https://capyriver.pages.dev/">Website</a>
+  <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-code.png" width="44" height="44" alt="" />
+  <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-check.png" width="44" height="44" alt="" />
+  <img src="https://raw.githubusercontent.com/Feruum/SoupTask/main/assets/readme/soup-icons/soup-start.png" width="44" height="44" alt="" />
+</p>
+
+<p align="center">
+  If CapyBrowser is useful to you, please ⭐ <b>star the repository</b> — it helps others find it.<br />
+  <sub>Made by <a href="https://github.com/capyriver">CapyRiver</a> · <a href="https://t.me/CapyRiver">Telegram</a> · <a href="https://capyriver.pages.dev/">Website</a></sub><br />
+  <sub><a href="https://github.com/Feruum/SoupTask/tree/main/assets/readme/soup-icons">Pixel-art icons: SoupTask by Feruum</a></sub>
+</p>
+
+<p align="center">
+  <img src="https://capsule-render.vercel.app/api?type=waving&color=0:9A4F31,55:211B19,100:0B0D10&height=100&section=footer&animation=fadeIn" alt="" width="100%" />
 </p>

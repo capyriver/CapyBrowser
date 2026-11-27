@@ -1,0 +1,29 @@
+name: Bug report
+description: Something does not work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you ask the model to do, and what went wrong?
+    validations:
+      required: true
+  - type: textarea
+    id: calls
+    attributes:
+      label: Tool calls and output
+      description: The tool calls (e.g. open_url, click) and the page view CapyBrowser returned. Logs from `--log-level INFO` help a lot.
+      render: text
+  - type: input
+    id: url
+    attributes:
+      label: Website URL (if relevant)
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: OS, browser and version, MCP client (Claude Desktop, Cursor, Ollama agent...), model
+      placeholder: Windows 11, Chrome 131, Claude Desktop
+    validations:
+      required: true
