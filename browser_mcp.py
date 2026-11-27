@@ -16,7 +16,7 @@ https://github.com/capyriver/CapyBrowser
     uv run browser_mcp.py            # headless (default)
     uv run browser_mcp.py --headed   # visible window, for debugging
     uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser
-    capybrowser init && capybrowser agent    # chat with a model configured in capy.yaml
+    capybrowser --config capy.yaml   # browser settings + extra MCP servers from one file
 
 Options: --browser PATH (or env BROWSER_MCP_PATH), --max-chars N (default 3500),
 --lang ru-RU (or env BROWSER_MCP_LANG; default: system locale),
@@ -42,7 +42,6 @@ import sys
 import tempfile
 import threading
 import time
-import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any, Callable
@@ -1897,52 +1896,31 @@ def setup(headed: bool = False, path: str | None = None, max_chars: int = MAX_CH
     cleanup_stale_dirs()
 
 
-# --------------------------------------------------------------------------- agent mode (capy.yaml)
+# --------------------------------------------------------------------------- capy.yaml + MCP hub
 
 CAPY_YAML_TEMPLATE = """\
-# capy.yaml - one file: which model to use and which tools it gets.
-# Run:  capybrowser agent            (chat)
-#       capybrowser agent "task"     (one task)
+# capy.yaml - CapyBrowser config: browser settings + extra MCP servers.
+# Your AI app starts only CapyBrowser; CapyBrowser starts the servers below
+# and gives the model their tools next to the browser tools.
 # Docs: https://github.com/capyriver/CapyBrowser#capyyaml
 
-model:
-  provider: ollama              # ollama | openai  (openai = any OpenAI-compatible API:
-                                #   LM Studio, llama.cpp server, vLLM, OpenRouter, OpenAI...)
-  name: qwen3:4b-instruct       # model name as the provider knows it
-  base_url: http://127.0.0.1:11434   # Ollama default; LM Studio: http://127.0.0.1:1234/v1
-  # api_key: ${OPENAI_API_KEY}  # ${VAR} is read from the environment; not needed for local models
-  temperature: 0.2
-  context: 16384                # context window to request (Ollama num_ctx)
+browser:
+  headed: false              # true = show the browser window
+  lang: en-US                # browser language; remove to use the system locale
+  max_chars: 3500            # max size of one page view returned to the model
+  allow_local_files: false   # allow file:// URLs
+  # path: C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe   # a specific browser
 
-browser:                        # the built-in CapyBrowser tools
-  enabled: true
-  headed: false                 # true = show the browser window
-  lang: en-US                   # browser language; remove to use the system locale
-  max_chars: 3500               # max size of one page view
-  allow_local_files: false
-
-mcp_servers: {}                 # extra MCP servers (stdio), same format as Claude Desktop:
-#  filesystem:
-#    command: npx
-#    args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+mcp_servers: {}              # any stdio MCP servers, same format as Claude Desktop:
 #  time:
 #    command: uvx
 #    args: ["mcp-server-time"]
-
-agent:
-  max_steps: 20                 # tool calls per task before giving up
-  keep_full_results: 2          # older tool results are shortened to save context
-  # system_prompt: "You are a helpful assistant with a web browser."
+#  filesystem:
+#    command: npx
+#    args: ["-y", "@modelcontextprotocol/server-filesystem", "C:/Users/me/Documents"]
+#    env:
+#      SOME_TOKEN: ${SOME_TOKEN}   # ${VAR} is read from the environment
 """
-
-AGENT_SYSTEM = (
-    "You are a helpful assistant that can use tools, including a real web browser. "
-    "Use the tools to do the task; do not guess facts you can look up. "
-    "Browser page views list clickable elements as [id]; use those ids with click and type_text. "
-    "Ids change after every action, so always use ids from the latest result. "
-    "Perform every step the user asks with tool calls, in order, before answering. "
-    "When the task is done, reply with a short final answer and no tool call."
-)
 
 
 def _expand_env(value: Any) -> Any:
@@ -1955,12 +1933,22 @@ def _expand_env(value: Any) -> Any:
     return value
 
 
-def load_capy_config(path: str | None) -> tuple[dict, str | None]:
-    """Load capy.yaml (or .yml / .json). Returns (config, path or None when defaults are used)."""
-    candidates = [path] if path else ["capy.yaml", "capy.yml", os.path.expanduser("~/.capy.yaml")]
-    found = next((p for p in candidates if p and os.path.isfile(p)), None)
-    if path and not found:
-        raise FileNotFoundError(f"config file not found: {path}")
+def find_config(path: str | None) -> str | None:
+    """Explicit path, then $CAPYBROWSER_CONFIG, ./capy.yaml, ~/.capy.yaml."""
+    if path:
+        if not os.path.isfile(path):
+            raise FileNotFoundError(f"config file not found: {path}")
+        return path
+    for cand in (os.environ.get("CAPYBROWSER_CONFIG"), "capy.yaml", "capy.yml",
+                 os.path.join(os.path.expanduser("~"), ".capy.yaml")):
+        if cand and os.path.isfile(cand):
+            return cand
+    return None
+
+
+def load_config(path: str | None) -> dict:
+    """Read and validate capy.yaml. Returns {"browser": {...}, "mcp_servers": {...}, "path": str|None}."""
+    found = find_config(path)
     data: Any = {}
     if found:
         with open(found, encoding="utf-8") as f:
@@ -1968,262 +1956,110 @@ def load_capy_config(path: str | None) -> tuple[dict, str | None]:
         if found.endswith(".json"):
             data = json.loads(text or "{}")
         else:
+            import yaml
+
             try:
-                import yaml
-            except ImportError:  # pragma: no cover - yaml is a declared dependency
-                raise RuntimeError("PyYAML is required to read capy.yaml (pip install pyyaml)") from None
-            data = yaml.safe_load(text) or {}
+                data = yaml.safe_load(text) or {}
+            except yaml.YAMLError as e:
+                raise ValueError(f"{found}: invalid YAML: {e}") from None
     if not isinstance(data, dict):
         raise ValueError(f"{found}: the top level must be a mapping")
+    unknown = set(data) - {"browser", "mcp_servers"}
+    if unknown:
+        raise ValueError(f"{found}: unknown section(s): {', '.join(sorted(unknown))} (allowed: browser, mcp_servers)")
     data = _expand_env(data)
-    model = dict(data.get("model") or {})
-    provider = str(model.get("provider") or "ollama").lower()
-    if provider not in ("ollama", "openai"):
-        raise ValueError(f"model.provider must be 'ollama' or 'openai', not {provider!r}")
-    model["provider"] = provider
-    model.setdefault("name", "qwen3:4b-instruct" if provider == "ollama" else "")
-    if not model["name"]:
-        raise ValueError("model.name is required")
-    model.setdefault("base_url", os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434") if provider == "ollama"
-                     else "http://127.0.0.1:1234/v1")
-    browser = {"enabled": True, "headed": False, "max_chars": MAX_CHARS, "allow_local_files": False}
-    browser.update(data.get("browser") or {})
+    browser = data.get("browser") or {}
+    if not isinstance(browser, dict):
+        raise ValueError("browser must be a mapping")
+    allowed = {"headed", "lang", "max_chars", "allow_local_files", "path"}
+    bad = set(browser) - allowed
+    if bad:
+        raise ValueError(f"browser: unknown option(s): {', '.join(sorted(bad))} (allowed: {', '.join(sorted(allowed))})")
     servers = data.get("mcp_servers") or {}
     if not isinstance(servers, dict):
         raise ValueError("mcp_servers must be a mapping of name -> {command, args, env}")
     for name, spec in servers.items():
         if not isinstance(spec, dict) or not spec.get("command"):
             raise ValueError(f"mcp_servers.{name}: 'command' is required")
-    agent = {"max_steps": 20, "keep_full_results": 2, "system_prompt": AGENT_SYSTEM}
-    agent.update({k: v for k, v in (data.get("agent") or {}).items() if v is not None})
-    return {"model": model, "browser": browser, "mcp_servers": servers, "agent": agent}, found
+        if not isinstance(spec.get("args") or [], list):
+            raise ValueError(f"mcp_servers.{name}: 'args' must be a list")
+        if not isinstance(spec.get("env") or {}, dict):
+            raise ValueError(f"mcp_servers.{name}: 'env' must be a mapping")
+    return {"browser": browser, "mcp_servers": servers, "path": found}
 
 
-def _browser_server_spec(browser: dict) -> dict:
-    args = [os.path.abspath(__file__)]
-    if browser.get("headed"):
-        args.append("--headed")
-    if browser.get("lang"):
-        args += ["--lang", str(browser["lang"])]
-    if browser.get("max_chars"):
-        args += ["--max-chars", str(int(browser["max_chars"]))]
-    if browser.get("allow_local_files"):
-        args.append("--allow-local-files")
-    if browser.get("path"):
-        args += ["--browser", str(browser["path"])]
-    return {"command": sys.executable, "args": args}
+class McpHub:
+    """Starts the MCP servers from capy.yaml and forwards their tools through CapyBrowser."""
 
-
-class ChatModel:
-    """Minimal chat client with tool calling for Ollama and OpenAI-compatible APIs (stdlib only)."""
-
-    def __init__(self, cfg: dict):
-        self.cfg = cfg
-        self.provider = cfg["provider"]
-        self.base = str(cfg["base_url"]).rstrip("/")
-        host = urllib.parse.urlsplit(self.base).hostname or ""
-        local = host in ("127.0.0.1", "localhost", "::1") or host.startswith("192.168.") or host.endswith(".local")
-        # local servers must not go through an HTTP(S) proxy; remote APIs may need one
-        self.opener = _NO_PROXY_OPENER if local else urllib.request.build_opener()
-
-    def _post(self, url: str, body: dict) -> dict:
-        headers = {"Content-Type": "application/json"}
-        if self.cfg.get("api_key"):
-            headers["Authorization"] = f"Bearer {self.cfg['api_key']}"
-        req = urllib.request.Request(url, data=json.dumps(body).encode(), headers=headers)
-        try:
-            with self.opener.open(req, timeout=float(self.cfg.get("timeout", 900))) as r:
-                return json.loads(r.read())
-        except urllib.error.HTTPError as e:
-            detail = e.read().decode("utf-8", "replace")[:500]
-            raise RuntimeError(f"{self.provider} API error {e.code}: {detail}") from None
-        except urllib.error.URLError as e:
-            raise RuntimeError(f"cannot reach the model at {self.base}: {e.reason}. Is the server running?") from None
-
-    def chat(self, messages: list[dict], tools: list[dict]) -> dict:
-        """Returns {"content": str, "tool_calls": [{"id", "name", "arguments": dict}]}."""
-        temp = self.cfg.get("temperature", 0.2)
-        if self.provider == "ollama":
-            body: dict = {"model": self.cfg["name"], "messages": [self._to_ollama(m) for m in messages],
-                          "tools": tools, "stream": False,
-                          "options": {"temperature": temp, "num_ctx": int(self.cfg.get("context", 16384))}}
-            if "think" in self.cfg:
-                body["think"] = bool(self.cfg["think"])
-            msg = self._post(self.base + "/api/chat", body).get("message") or {}
-            calls = []
-            for i, c in enumerate(msg.get("tool_calls") or []):
-                fn = c.get("function") or {}
-                args = fn.get("arguments") or {}
-                if isinstance(args, str):
-                    args = json.loads(args or "{}")
-                calls.append({"id": c.get("id") or f"call_{i}", "name": fn.get("name", ""), "arguments": args})
-            return {"content": msg.get("content") or "", "tool_calls": calls}
-        body = {"model": self.cfg["name"], "messages": [self._to_openai(m) for m in messages], "temperature": temp}
-        if tools:
-            body["tools"] = tools
-        data = self._post(self.base + "/chat/completions", body)
-        msg = ((data.get("choices") or [{}])[0].get("message")) or {}
-        calls = []
-        for i, c in enumerate(msg.get("tool_calls") or []):
-            fn = c.get("function") or {}
-            try:
-                args = json.loads(fn.get("arguments") or "{}")
-            except ValueError:
-                args = {}
-            calls.append({"id": c.get("id") or f"call_{i}", "name": fn.get("name", ""), "arguments": args})
-        return {"content": msg.get("content") or "", "tool_calls": calls}
-
-    @staticmethod
-    def _to_ollama(m: dict) -> dict:
-        if m["role"] == "assistant" and m.get("tool_calls"):
-            return {"role": "assistant", "content": m.get("content") or "",
-                    "tool_calls": [{"function": {"name": c["name"], "arguments": c["arguments"]}} for c in m["tool_calls"]]}
-        if m["role"] == "tool":
-            return {"role": "tool", "content": m["content"], "tool_name": m.get("name", "")}
-        return {"role": m["role"], "content": m.get("content") or ""}
-
-    @staticmethod
-    def _to_openai(m: dict) -> dict:
-        if m["role"] == "assistant" and m.get("tool_calls"):
-            return {"role": "assistant", "content": m.get("content") or None,
-                    "tool_calls": [{"id": c["id"], "type": "function",
-                                    "function": {"name": c["name"], "arguments": json.dumps(c["arguments"])}}
-                                   for c in m["tool_calls"]]}
-        if m["role"] == "tool":
-            return {"role": "tool", "tool_call_id": m.get("tool_call_id", ""), "content": m["content"]}
-        return {"role": m["role"], "content": m.get("content") or ""}
-
-
-class CapyAgent:
-    """Connects a model to the built-in browser and any MCP servers from capy.yaml."""
-
-    def __init__(self, config: dict, log: Callable[[str], None] | None = None):
-        self.config = config
-        self.model = ChatModel(config["model"])
-        self.log = log or (lambda s: print(s, file=sys.stderr, flush=True))
-        self.tools: list[dict] = []
+    def __init__(self, servers: dict, reserved: set[str]):
+        self.servers = servers
+        self.reserved = set(reserved)
+        self.tools: list[Any] = []
         self.routes: dict[str, tuple[Any, str]] = {}
-        self.messages: list[dict] = [{"role": "system", "content": str(config["agent"]["system_prompt"])}]
-        self._stack: contextlib.AsyncExitStack | None = None
 
-    async def __aenter__(self) -> "CapyAgent":
+    @contextlib.asynccontextmanager
+    async def running(self):
         from mcp import ClientSession, StdioServerParameters
         from mcp.client.stdio import stdio_client
 
-        self._stack = contextlib.AsyncExitStack()
-        servers: dict[str, dict] = {}
-        if self.config["browser"].get("enabled", True):
-            servers["browser"] = _browser_server_spec(self.config["browser"])
-        servers.update(self.config["mcp_servers"])
-        used: set[str] = set()
-        for sname, spec in servers.items():
-            env = dict(os.environ)
-            env.update({str(k): str(v) for k, v in (spec.get("env") or {}).items()})
-            params = StdioServerParameters(command=str(spec["command"]), args=[str(a) for a in spec.get("args") or []], env=env)
-            try:
-                read, write = await self._stack.enter_async_context(stdio_client(params))
-                session = await self._stack.enter_async_context(ClientSession(read, write))
-                await asyncio.wait_for(session.initialize(), 60)
-                listed = (await session.list_tools()).tools
-            except Exception as e:
-                self.log(f"[capy] MCP server '{sname}' failed to start: {e}")
-                continue
-            for t in listed:
-                name = t.name if t.name not in used else f"{sname}__{t.name}"
-                used.add(name)
-                self.routes[name] = (session, t.name)
-                self.tools.append({"type": "function", "function": {
-                    "name": name, "description": t.description or "", "parameters": t.inputSchema or {"type": "object"}}})
-            self.log(f"[capy] {sname}: {len(listed)} tools")
-        if not self.tools:
-            self.log("[capy] warning: no tools available; the model will answer without tools")
-        return self
+        async with contextlib.AsyncExitStack() as stack:
+            for sname, spec in self.servers.items():
+                env = dict(os.environ)
+                env.update({str(k): str(v) for k, v in (spec.get("env") or {}).items()})
+                params = StdioServerParameters(command=str(spec["command"]),
+                                               args=[str(a) for a in spec.get("args") or []], env=env)
+                try:
+                    read, write = await stack.enter_async_context(stdio_client(params))
+                    session = await stack.enter_async_context(ClientSession(read, write))
+                    await asyncio.wait_for(session.initialize(), 60)
+                    listed = (await asyncio.wait_for(session.list_tools(), 60)).tools
+                except Exception as e:  # one broken server must not take the browser down
+                    log.warning("capy.yaml: MCP server %r failed to start: %s", sname, e)
+                    continue
+                for tool in listed:
+                    name = tool.name
+                    if name in self.reserved or name in self.routes:
+                        name = f"{sname}__{tool.name}"
+                    self.routes[name] = (session, tool.name)
+                    self.tools.append(tool.model_copy(update={"name": name, "outputSchema": None}))
+                log.info("capy.yaml: %s -> %d tools", sname, len(listed))
+            yield self
 
-    async def __aexit__(self, *exc: Any) -> None:
-        if self._stack is not None:
-            with contextlib.suppress(Exception):
-                await self._stack.aclose()
-
-    async def ask(self, text: str) -> str:
-        cfg = self.config["agent"]
-        self.messages.append({"role": "user", "content": text})
-        for _ in range(int(cfg.get("max_steps", 20))):
-            keep = int(cfg.get("keep_full_results", 2))
-            tool_msgs = [m for m in self.messages if m["role"] == "tool"]
-            for m in tool_msgs[:-keep] if keep > 0 else tool_msgs:
-                if len(m["content"]) > 400:
-                    m["content"] = m["content"][:400] + "\n[...older tool result shortened...]"
-            reply = await asyncio.to_thread(self.model.chat, self.messages, self.tools)
-            self.messages.append({"role": "assistant", "content": reply["content"], "tool_calls": reply["tool_calls"]})
-            if not reply["tool_calls"]:
-                return reply["content"].strip()
-            for call in reply["tool_calls"]:
-                self.log(f"  -> {call['name']}({json.dumps(call['arguments'], ensure_ascii=False)[:160]})")
-                route = self.routes.get(call["name"])
-                if route is None:
-                    out = f"Error: unknown tool {call['name']!r}. Available: {', '.join(self.routes)}"
-                else:
-                    session, real = route
-                    try:
-                        res = await session.call_tool(real, call["arguments"] or {})
-                        out = "".join(getattr(c, "text", "") for c in res.content) or "(no output)"
-                    except Exception as e:
-                        out = f"Error: tool {call['name']} failed: {e}"
-                self.messages.append({"role": "tool", "content": out, "name": call["name"], "tool_call_id": call["id"]})
-        return "(stopped: step limit reached; raise agent.max_steps in capy.yaml)"
+    async def call(self, name: str, arguments: dict) -> list:
+        session, real = self.routes[name]
+        res = await session.call_tool(real, arguments or {})
+        if res.isError:
+            raise RuntimeError("".join(getattr(c, "text", "") for c in res.content) or f"{name} failed")
+        return list(res.content)
 
 
-async def _agent_main(config: dict, task: str | None) -> int:
-    async with CapyAgent(config) as agent:
-        if task:
-            print(await agent.ask(task))
-            return 0
-        m = config["model"]
-        print(f"CapyBrowser agent · {m['provider']}:{m['name']} · {len(agent.tools)} tools · "
-              "type a task, 'exit' to quit", file=sys.stderr)
-        while True:
-            try:
-                text = (await asyncio.to_thread(input, "\nyou> ")).strip()
-            except (EOFError, KeyboardInterrupt):
-                print(file=sys.stderr)
-                return 0
-            if not text:
-                continue
-            if text.lower() in ("exit", "quit", ":q"):
-                return 0
-            try:
-                print("\ncapy> " + await agent.ask(text))
-            except RuntimeError as e:
-                print(f"\nerror: {e}", file=sys.stderr)
+def attach_hub(mcp: Any, servers: dict) -> None:
+    """Expose the tools of the capy.yaml MCP servers next to the browser tools."""
+    if not servers:
+        return
+    own_list, own_call = mcp.list_tools, mcp.call_tool
+    reserved = {t.name for t in mcp._tool_manager.list_tools()}
+    hub = McpHub(servers, reserved)
+    server = mcp._mcp_server
+    inner_lifespan = server.lifespan
 
+    @contextlib.asynccontextmanager
+    async def lifespan(app):
+        async with hub.running(), inner_lifespan(app) as ctx:
+            yield ctx
 
-def agent_cli(argv: list[str]) -> None:
-    ap = argparse.ArgumentParser(prog="capybrowser agent",
-                                 description="Chat with a model that has the browser and the MCP servers from capy.yaml")
-    ap.add_argument("task", nargs="*", help="task to run once (omit for an interactive chat)")
-    ap.add_argument("-c", "--config", default=None, help="config file (default: ./capy.yaml, then ~/.capy.yaml)")
-    ap.add_argument("-m", "--model", default=None, help="override model.name")
-    ap.add_argument("--headed", action="store_true", help="show the browser window")
-    args = ap.parse_args(argv)
-    logging.basicConfig(stream=sys.stderr, level=logging.WARNING)
-    try:
-        config, path = load_capy_config(args.config)
-    except (OSError, ValueError, RuntimeError) as e:
-        sys.exit(f"capy.yaml: {e}")
-    if args.model:
-        config["model"]["name"] = args.model
-    if args.headed:
-        config["browser"]["headed"] = True
-    if path is None:
-        print("[capy] no capy.yaml found - using defaults (Ollama, qwen3:4b-instruct). "
-              "Create one with: capybrowser init", file=sys.stderr)
-    try:
-        code = asyncio.run(_agent_main(config, " ".join(args.task).strip() or None))
-    except KeyboardInterrupt:
-        code = 130
-    except RuntimeError as e:
-        sys.exit(f"error: {e}")
-    sys.exit(code)
+    server.lifespan = lifespan
+
+    async def list_tools():
+        return list(await own_list()) + list(hub.tools)
+
+    async def call_tool(name: str, arguments: dict):
+        if name in hub.routes:
+            return await hub.call(name, arguments)
+        return await own_call(name, arguments)
+
+    server.list_tools()(list_tools)
+    server.call_tool(validate_input=False)(call_tool)
 
 
 def init_cli(argv: list[str]) -> None:
@@ -2235,33 +2071,47 @@ def init_cli(argv: list[str]) -> None:
         sys.exit(f"{args.path} already exists (use --force to overwrite)")
     with open(args.path, "w", encoding="utf-8") as f:
         f.write(CAPY_YAML_TEMPLATE)
-    print(f"Created {args.path}. Edit the model section, then run: capybrowser agent")
+    print(f"Created {os.path.abspath(args.path)}")
 
 
 def main(argv: list[str] | None = None) -> None:
     argv = list(sys.argv[1:] if argv is None else argv)
-    if argv and argv[0] == "agent":
-        return agent_cli(argv[1:])
     if argv and argv[0] == "init":
         return init_cli(argv[1:])
     ap = argparse.ArgumentParser(prog="capybrowser",
                                  description="CapyBrowser: MCP server that drives the system Chromium-based browser over CDP. "
-                                             "Other commands: 'capybrowser agent' (chat with a model from capy.yaml), "
-                                             "'capybrowser init' (create capy.yaml).")
+                                             "'capybrowser init' creates a capy.yaml config.")
     ap.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    ap.add_argument("--headed", action="store_true", help="show the browser window (debugging)")
+    ap.add_argument("-c", "--config", default=None,
+                    help="capy.yaml path (default: $CAPYBROWSER_CONFIG, ./capy.yaml, ~/.capy.yaml)")
+    ap.add_argument("--headed", action="store_true", default=None, help="show the browser window (debugging)")
     ap.add_argument("--browser", default=None, help="path to the browser executable")
-    ap.add_argument("--max-chars", type=int, default=MAX_CHARS, help="max characters per tool response")
+    ap.add_argument("--max-chars", type=int, default=None, help=f"max characters per tool response (default {MAX_CHARS})")
     ap.add_argument("--lang", default=None, help="browser UI/Accept-Language, e.g. ru-RU (default: system locale)")
-    ap.add_argument("--allow-local-files", action="store_true", help="allow open_url with file:// URLs")
+    ap.add_argument("--allow-local-files", action="store_true", default=None, help="allow open_url with file:// URLs")
     ap.add_argument("--log-level", default=os.environ.get("BROWSER_MCP_LOG", "WARNING"))
     args, _ = ap.parse_known_args(argv)
     logging.basicConfig(stream=sys.stderr, level=getattr(logging, str(args.log_level).upper(), logging.WARNING),
                         format="%(asctime)s %(name)s %(levelname)s %(message)s")
-    setup(args.headed, args.browser, args.max_chars, args.lang, args.allow_local_files)
-    _install_signal_handlers()
     try:
-        build_server().run("stdio")
+        cfg = load_config(args.config)
+    except (OSError, ValueError) as e:
+        sys.exit(f"capy.yaml: {e}")
+    b = cfg["browser"]
+
+    def pick(flag: Any, key: str, default: Any) -> Any:
+        return flag if flag is not None else (b.get(key) if b.get(key) is not None else default)
+
+    setup(bool(pick(args.headed, "headed", False)), pick(args.browser, "path", None),
+          int(pick(args.max_chars, "max_chars", MAX_CHARS)), pick(args.lang, "lang", None),
+          bool(pick(args.allow_local_files, "allow_local_files", False)))
+    if cfg["path"]:
+        log.info("using config %s", cfg["path"])
+    _install_signal_handlers()
+    server = build_server()
+    attach_hub(server, cfg["mcp_servers"])
+    try:
+        server.run("stdio")
     finally:
         cleanup_all()
 

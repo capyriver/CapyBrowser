@@ -1,33 +1,21 @@
-# capy.yaml - one file: which model to use and which tools it gets.
-# Run:  capybrowser agent            (chat)
-#       capybrowser agent "task"     (one task)
+# capy.yaml - CapyBrowser config: browser settings + extra MCP servers.
+# Your AI app starts only CapyBrowser; CapyBrowser starts the servers below
+# and gives the model their tools next to the browser tools.
 # Docs: https://github.com/capyriver/CapyBrowser#capyyaml
 
-model:
-  provider: ollama              # ollama | openai  (openai = any OpenAI-compatible API:
-                                #   LM Studio, llama.cpp server, vLLM, OpenRouter, OpenAI...)
-  name: qwen3:4b-instruct       # model name as the provider knows it
-  base_url: http://127.0.0.1:11434   # Ollama default; LM Studio: http://127.0.0.1:1234/v1
-  # api_key: ${OPENAI_API_KEY}  # ${VAR} is read from the environment; not needed for local models
-  temperature: 0.2
-  context: 16384                # context window to request (Ollama num_ctx)
+browser:
+  headed: false              # true = show the browser window
+  lang: en-US                # browser language; remove to use the system locale
+  max_chars: 3500            # max size of one page view returned to the model
+  allow_local_files: false   # allow file:// URLs
+  # path: C:\Program Files\Google\Chrome\Application\chrome.exe   # a specific browser
 
-browser:                        # the built-in CapyBrowser tools
-  enabled: true
-  headed: false                 # true = show the browser window
-  lang: en-US                   # browser language; remove to use the system locale
-  max_chars: 3500               # max size of one page view
-  allow_local_files: false
-
-mcp_servers: {}                 # extra MCP servers (stdio), same format as Claude Desktop:
-#  filesystem:
-#    command: npx
-#    args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+mcp_servers: {}              # any stdio MCP servers, same format as Claude Desktop:
 #  time:
 #    command: uvx
 #    args: ["mcp-server-time"]
-
-agent:
-  max_steps: 20                 # tool calls per task before giving up
-  keep_full_results: 2          # older tool results are shortened to save context
-  # system_prompt: "You are a helpful assistant with a web browser."
+#  filesystem:
+#    command: npx
+#    args: ["-y", "@modelcontextprotocol/server-filesystem", "C:/Users/me/Documents"]
+#    env:
+#      SOME_TOKEN: ${SOME_TOKEN}   # ${VAR} is read from the environment

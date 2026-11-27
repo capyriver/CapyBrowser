@@ -22,7 +22,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/tagline.svg" width="720" alt="Give any LLM a real browser · One link to install · Works with small local models · One capy.yaml: model + browser + MCP" />
+  <img src="assets/tagline.svg" width="720" alt="Give any LLM a real browser · One link to install · Works with small local models · One capy.yaml: browser + all your MCP" />
 </p>
 
 <p align="center">
@@ -121,36 +121,52 @@ Restart the app and ask: *"Search the web for the latest Python release and open
 
 <a id="capyyaml"></a>
 
-### <img src="assets/icons/capy-orange.svg" width="40" height="40" alt="" align="absmiddle" /> capy.yaml — one file: model + browser + MCP
+### <img src="assets/icons/capy-orange.svg" width="40" height="40" alt="" align="absmiddle" /> capy.yaml — one file: browser + all your MCP servers
 
-Don't have an MCP app? Like `soup.yaml` in Soup, CapyBrowser has **one config file**. Write `capy.yaml`, run `capybrowser agent` — and your model (local or cloud) can browse the web and use any other MCP servers. No Claude Desktop, no Cursor, no code.
+`capy.yaml` is CapyBrowser's config file. Put your browser settings and **any other MCP servers** in it. Your AI app starts only CapyBrowser; CapyBrowser starts the servers from the file and gives the model their tools next to the browser tools. One file — instead of editing the config of every app.
 
 ```yaml
-model:
-  provider: ollama            # ollama | openai (LM Studio, llama.cpp, vLLM, OpenRouter, OpenAI…)
-  name: qwen3:4b-instruct
-  base_url: http://127.0.0.1:11434
 browser:
-  lang: en-US                 # headed: true — show the window
-mcp_servers:                  # any MCP servers, Claude Desktop format
+  lang: en-US  # browser language
+  headed: false  # true — show the browser window
+  max_chars: 3500  # max size of one page view
+mcp_servers:  # any MCP servers, same format as Claude Desktop
   time:
     command: uvx
     args: ["mcp-server-time"]
+  filesystem:
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "C:/Users/me/Documents"]
 ```
+
+**1. Create the file** (or copy [`capy.yaml`](capy.yaml) from this repository):
 
 ```bash
-uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser init     # creates capy.yaml
-uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser agent    # chat
-capybrowser agent "Find the latest Python release and open its changelog"    # one task
-capybrowser agent -c work.yaml -m qwen3:8b --headed                          # other file, model, visible browser
+uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser init ~/.capy.yaml
 ```
 
-- **`model`** — `ollama` (default) or `openai` for any OpenAI-compatible API: LM Studio (`http://127.0.0.1:1234/v1`), llama.cpp server, vLLM, OpenRouter, OpenAI. `api_key: ${OPENAI_API_KEY}` reads the key from the environment — never write keys into the file.
-- **`browser`** — the built-in CapyBrowser tools; same options as the flags below. `enabled: false` turns them off.
-- **`mcp_servers`** — any stdio MCP servers in the same format as `claude_desktop_config.json` (`command`, `args`, `env`): files, databases, GitHub, time… Their tools are added next to the browser.
-- **`agent`** — `max_steps`, `keep_full_results` (older tool results are shortened so small models keep a clean context) and an optional `system_prompt`.
+**2. Point your app to it.** Add `--config` and the path to the `args`. If the file is `~/.capy.yaml`, it is found automatically and this step can be skipped.
 
-The file is looked up as `./capy.yaml`, then `~/.capy.yaml`; `-c` picks any other. A full commented template: [`capy.yaml`](capy.yaml).
+```json
+{
+  "mcpServers": {
+    "capybrowser": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/capyriver/CapyBrowser", "capybrowser",
+               "--config", "C:/Users/me/capy.yaml"]
+    }
+  }
+}
+```
+
+**3. Restart the app.** The model now has the 6 browser tools plus every tool of the servers in `mcp_servers`.
+
+- The file is looked up in this order: `--config`, the `CAPYBROWSER_CONFIG` environment variable, `./capy.yaml`, `~/.capy.yaml` (on Windows `~` is `C:\Users\<you>`).
+- `browser` options: `headed`, `lang`, `max_chars`, `allow_local_files`, `path`. Command-line flags override the file.
+- `mcp_servers` entries: `command`, `args`, `env`. `${VAR}` is replaced with an environment variable, so tokens and keys never have to be written into the file.
+- If two servers have a tool with the same name, the second one is exposed as `server__tool`.
+- A server that fails to start is skipped with a warning in the log; the browser keeps working.
+- Typos are not silently ignored: an unknown section or option stops the start with a clear message.
 
 <a id="connect-to-your-app"></a>
 
@@ -273,6 +289,7 @@ Every tool returns the updated page, so the model always sees the result of its 
 
 | Flag | Environment variable | Default | Meaning |
 |---|---|---|---|
+| `--config PATH` | `CAPYBROWSER_CONFIG` | `./capy.yaml`, `~/.capy.yaml` | Config file with browser settings and extra MCP servers, see [capy.yaml](#capyyaml). |
 | `--headed` | — | off | Show the browser window (useful to watch or debug the agent). |
 | `--browser PATH` | `BROWSER_MCP_PATH` | auto | Use a specific browser executable. |
 | `--max-chars N` | `BROWSER_MCP_MAX_CHARS` | `3500` | Maximum size of every tool response. Raise it for large-context models. |
@@ -399,7 +416,7 @@ Project layout:
 
 ```text
 browser_mcp.py          the whole server (also runnable as a single PEP 723 script)
-capy.yaml               example config for `capybrowser agent` (model + browser + MCP servers)
+capy.yaml               example config: browser settings + extra MCP servers
 pyproject.toml          package metadata and the `capybrowser` command
 examples/               MCP configs for popular apps and an Ollama agent
 tests/                  pytest suite (runs on Windows, macOS and Linux in CI)
@@ -490,36 +507,52 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 重启应用后试着问：*“搜索 Python 的最新版本并打开官方页面。”*
 
-### <img src="assets/icons/capy-orange.svg" width="40" height="40" alt="" align="absmiddle" /> capy.yaml —— 一个文件：模型 + 浏览器 + MCP
+### <img src="assets/icons/capy-orange.svg" width="40" height="40" alt="" align="absmiddle" /> capy.yaml —— 一个文件：浏览器 + 你所有的 MCP 服务器
 
-没有 MCP 应用？就像 Soup 的 `soup.yaml`，CapyBrowser 也只需要**一个配置文件**。写好 `capy.yaml`，运行 `capybrowser agent`，你的模型（本地或云端）就能浏览网页并使用任何其他 MCP 服务器，无需 Claude Desktop、Cursor 或编写代码。
+`capy.yaml` 是 CapyBrowser 的配置文件。把浏览器设置和**任意其他 MCP 服务器**写进去。你的 AI 应用只需要启动 CapyBrowser，CapyBrowser 会启动文件中的服务器，并把它们的工具和浏览器工具一起提供给模型。一个文件，而不必修改每个应用的配置。
 
 ```yaml
-model:
-  provider: ollama            # ollama | openai (LM Studio, llama.cpp, vLLM, OpenRouter, OpenAI…)
-  name: qwen3:4b-instruct
-  base_url: http://127.0.0.1:11434
 browser:
-  lang: en-US                 # headed: true — show the window
-mcp_servers:                  # any MCP servers, Claude Desktop format
+  lang: zh-CN  # 浏览器语言
+  headed: false  # true —— 显示浏览器窗口
+  max_chars: 3500  # 单个页面视图的最大长度
+mcp_servers:  # 任意 MCP 服务器，格式与 Claude Desktop 相同
   time:
     command: uvx
     args: ["mcp-server-time"]
+  filesystem:
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "C:/Users/me/Documents"]
 ```
+
+**1. 创建文件**（或复制本仓库中的 [`capy.yaml`](capy.yaml)）：
 
 ```bash
-uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser init     # 创建 capy.yaml
-uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser agent    # 对话
-capybrowser agent "找到 Python 的最新版本并打开更新日志"                         # 单个任务
-capybrowser agent -c work.yaml -m qwen3:8b --headed                          # 其他配置、模型、显示浏览器窗口
+uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser init ~/.capy.yaml
 ```
 
-- **`model`**：`ollama`（默认）或 `openai`（任何 OpenAI 兼容 API：LM Studio `http://127.0.0.1:1234/v1`、llama.cpp server、vLLM、OpenRouter、OpenAI）。`api_key: ${OPENAI_API_KEY}` 从环境变量读取密钥，请勿把密钥写进文件。
-- **`browser`**：内置的 CapyBrowser 工具，选项与下方命令行参数相同；`enabled: false` 可关闭。
-- **`mcp_servers`**：任何 stdio MCP 服务器，格式与 `claude_desktop_config.json` 相同（`command`、`args`、`env`）。它们的工具会和浏览器工具一起提供给模型。
-- **`agent`**：`max_steps`、`keep_full_results`（较早的工具结果会被缩短，让小模型的上下文保持干净）以及可选的 `system_prompt`。
+**2. 让应用使用它。** 在 `args` 中加入 `--config` 和文件路径。如果文件位于 `~/.capy.yaml`，会被自动找到，可以跳过这一步。
 
-查找顺序：`./capy.yaml`，然后 `~/.capy.yaml`；用 `-c` 指定其他文件。完整带注释的模板：[`capy.yaml`](capy.yaml)。
+```json
+{
+  "mcpServers": {
+    "capybrowser": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/capyriver/CapyBrowser", "capybrowser",
+               "--config", "C:/Users/me/capy.yaml"]
+    }
+  }
+}
+```
+
+**3. 重启应用。** 模型将拥有 6 个浏览器工具，以及 `mcp_servers` 中所有服务器的工具。
+
+- 查找顺序：`--config`、环境变量 `CAPYBROWSER_CONFIG`、`./capy.yaml`、`~/.capy.yaml`（Windows 上 `~` 即 `C:\Users\<用户名>`）。
+- `browser` 选项：`headed`、`lang`、`max_chars`、`allow_local_files`、`path`。命令行参数优先于文件。
+- `mcp_servers` 每项包含 `command`、`args`、`env`。`${VAR}` 会被替换为环境变量，令牌和密钥无需写进文件。
+- 如果两个服务器有同名工具，第二个会以 `服务器名__工具名` 的形式提供。
+- 无法启动的服务器会被跳过并在日志中警告，浏览器照常工作。
+- 拼写错误不会被悄悄忽略：未知的分区或选项会以清晰的提示阻止启动。
 
 ### <img src="assets/icons/capy-plug.svg" width="40" height="40" alt="" align="absmiddle" /> 接入应用
 
@@ -564,6 +597,7 @@ uv run https://raw.githubusercontent.com/capyriver/CapyBrowser/main/browser_mcp.
 
 | 参数 | 环境变量 | 默认值 | 说明 |
 |---|---|---|---|
+| `--config PATH` | `CAPYBROWSER_CONFIG` | `./capy.yaml`、`~/.capy.yaml` | 包含浏览器设置和其他 MCP 服务器的配置文件，见 capy.yaml 一节。 |
 | `--headed` | — | 关 | 显示浏览器窗口（便于观察或调试）。 |
 | `--browser PATH` | `BROWSER_MCP_PATH` | 自动 | 指定浏览器可执行文件。 |
 | `--max-chars N` | `BROWSER_MCP_MAX_CHARS` | `3500` | 每个工具响应的最大长度。 |
@@ -730,36 +764,52 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 Перезапустите приложение и попросите: *«Найди в интернете последнюю версию Python и открой официальную страницу».*
 
-### <img src="assets/icons/capy-orange.svg" width="40" height="40" alt="" align="absmiddle" /> capy.yaml — один файл: модель + браузер + MCP
+### <img src="assets/icons/capy-orange.svg" width="40" height="40" alt="" align="absmiddle" /> capy.yaml — один файл: браузер + все ваши MCP-серверы
 
-Нет MCP-приложения? Как `soup.yaml` у Soup, у CapyBrowser есть **один файл настроек**. Пишете `capy.yaml`, запускаете `capybrowser agent` — и ваша модель (локальная или облачная) умеет ходить в интернет через браузер и пользоваться любыми другими MCP-серверами. Без Claude Desktop, без Cursor, без кода.
+`capy.yaml` — это файл настроек CapyBrowser. В нём настройки браузера и **любые другие MCP-серверы**. Ваше AI-приложение запускает только CapyBrowser, а CapyBrowser сам запускает серверы из файла и отдаёт модели их инструменты вместе с браузерными. Один файл — вместо того чтобы править конфиг каждого приложения.
 
 ```yaml
-model:
-  provider: ollama            # ollama | openai (LM Studio, llama.cpp, vLLM, OpenRouter, OpenAI…)
-  name: qwen3:4b-instruct
-  base_url: http://127.0.0.1:11434
 browser:
-  lang: en-US                 # headed: true — show the window
-mcp_servers:                  # any MCP servers, Claude Desktop format
+  lang: ru-RU  # язык браузера
+  headed: false  # true — показывать окно браузера
+  max_chars: 3500  # максимальный размер одной страницы для модели
+mcp_servers:  # любые MCP-серверы, формат как у Claude Desktop
   time:
     command: uvx
     args: ["mcp-server-time"]
+  filesystem:
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "C:/Users/me/Documents"]
 ```
+
+**1. Создайте файл** (или скопируйте [`capy.yaml`](capy.yaml) из этого репозитория):
 
 ```bash
-uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser init     # создаст capy.yaml
-uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser agent    # чат
-capybrowser agent "Найди последнюю версию Python и открой список изменений"  # одна задача
-capybrowser agent -c work.yaml -m qwen3:8b --headed                          # другой файл, модель, видимый браузер
+uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser init ~/.capy.yaml
 ```
 
-- **`model`** — `ollama` (по умолчанию) или `openai` для любого OpenAI-совместимого API: LM Studio (`http://127.0.0.1:1234/v1`), llama.cpp server, vLLM, OpenRouter, OpenAI. `api_key: ${OPENAI_API_KEY}` берёт ключ из переменной окружения — не пишите ключи прямо в файл.
-- **`browser`** — встроенные инструменты CapyBrowser, те же параметры, что флаги ниже. `enabled: false` — выключить.
-- **`mcp_servers`** — любые MCP-серверы (stdio) в том же формате, что `claude_desktop_config.json` (`command`, `args`, `env`): файлы, базы данных, GitHub, время… Их инструменты добавляются рядом с браузером.
-- **`agent`** — `max_steps`, `keep_full_results` (старые результаты инструментов сокращаются, чтобы у маленьких моделей контекст оставался чистым) и необязательный `system_prompt`.
+**2. Укажите его приложению.** Добавьте в `args` флаг `--config` и путь к файлу. Если файл лежит в `~/.capy.yaml`, он находится автоматически — этот шаг можно пропустить.
 
-Файл ищется так: `./capy.yaml`, затем `~/.capy.yaml`; через `-c` можно указать любой другой. Полный шаблон с комментариями: [`capy.yaml`](capy.yaml).
+```json
+{
+  "mcpServers": {
+    "capybrowser": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/capyriver/CapyBrowser", "capybrowser",
+               "--config", "C:/Users/me/capy.yaml"]
+    }
+  }
+}
+```
+
+**3. Перезапустите приложение.** Теперь у модели 6 инструментов браузера плюс все инструменты серверов из `mcp_servers`.
+
+- Где ищется файл, по порядку: `--config`, переменная окружения `CAPYBROWSER_CONFIG`, `./capy.yaml`, `~/.capy.yaml` (в Windows `~` — это `C:\Users\<имя>`).
+- Параметры `browser`: `headed`, `lang`, `max_chars`, `allow_local_files`, `path`. Флаги командной строки важнее файла.
+- У каждого сервера в `mcp_servers`: `command`, `args`, `env`. `${VAR}` заменяется переменной окружения — токены и ключи не нужно писать в файл.
+- Если у двух серверов инструменты с одинаковым именем, второй будет доступен как `сервер__инструмент`.
+- Сервер, который не запустился, пропускается с предупреждением в логе — браузер продолжает работать.
+- Опечатки не игнорируются молча: неизвестный раздел или параметр останавливает запуск с понятным сообщением.
 
 ### <img src="assets/icons/capy-plug.svg" width="40" height="40" alt="" align="absmiddle" /> Подключение к приложениям
 
@@ -880,6 +930,7 @@ uv run browser_mcp.py
 
 | Флаг | Переменная окружения | По умолчанию | Что делает |
 |---|---|---|---|
+| `--config PATH` | `CAPYBROWSER_CONFIG` | `./capy.yaml`, `~/.capy.yaml` | Файл с настройками браузера и дополнительными MCP-серверами, см. раздел capy.yaml. |
 | `--headed` | — | выкл. | Показывать окно браузера (чтобы смотреть за агентом или отлаживать). |
 | `--browser PATH` | `BROWSER_MCP_PATH` | авто | Конкретный исполняемый файл браузера. |
 | `--max-chars N` | `BROWSER_MCP_MAX_CHARS` | `3500` | Максимальный размер ответа любого инструмента. Для моделей с большим контекстом можно увеличить. |
@@ -1084,36 +1135,52 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 Қолданбаны қайта іске қосып, сұраңыз: *«Python-ның соңғы нұсқасын интернеттен тауып, ресми бетін аш».*
 
-### <img src="assets/icons/capy-orange.svg" width="40" height="40" alt="" align="absmiddle" /> capy.yaml — бір файл: модель + браузер + MCP
+### <img src="assets/icons/capy-orange.svg" width="40" height="40" alt="" align="absmiddle" /> capy.yaml — бір файл: браузер + барлық MCP серверлеріңіз
 
-MCP қолданбасы жоқ па? Soup-тағы `soup.yaml` сияқты, CapyBrowser-де де **бір баптау файлы** бар. `capy.yaml` жазып, `capybrowser agent` іске қосыңыз — сонда модельіңіз (жергілікті не бұлттық) браузер арқылы интернетке кіріп, кез келген басқа MCP серверлерін пайдалана алады. Claude Desktop, Cursor немесе код қажет емес.
+`capy.yaml` — CapyBrowser-дің баптау файлы. Онда браузер баптаулары және **кез келген басқа MCP серверлері** жазылады. AI қолданбаңыз тек CapyBrowser-ді іске қосады, ал CapyBrowser файлдағы серверлерді өзі іске қосып, олардың құралдарын браузер құралдарымен бірге модельге береді. Әр қолданбаның баптауын өзгертудің орнына — бір файл.
 
 ```yaml
-model:
-  provider: ollama            # ollama | openai (LM Studio, llama.cpp, vLLM, OpenRouter, OpenAI…)
-  name: qwen3:4b-instruct
-  base_url: http://127.0.0.1:11434
 browser:
-  lang: en-US                 # headed: true — show the window
-mcp_servers:                  # any MCP servers, Claude Desktop format
+  lang: kk-KZ  # браузер тілі
+  headed: false  # true — браузер терезесін көрсету
+  max_chars: 3500  # модельге берілетін бір беттің ең үлкен көлемі
+mcp_servers:  # кез келген MCP серверлері, Claude Desktop форматында
   time:
     command: uvx
     args: ["mcp-server-time"]
+  filesystem:
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "C:/Users/me/Documents"]
 ```
+
+**1. Файлды жасаңыз** (немесе осы репозиторийдегі [`capy.yaml`](capy.yaml) файлын көшіріңіз):
 
 ```bash
-uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser init     # capy.yaml жасайды
-uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser agent    # чат
-capybrowser agent "Python-ның соңғы нұсқасын тауып, өзгерістер тізімін аш"    # бір тапсырма
-capybrowser agent -c work.yaml -m qwen3:8b --headed                          # басқа файл, модель, көрінетін браузер
+uvx --from git+https://github.com/capyriver/CapyBrowser capybrowser init ~/.capy.yaml
 ```
 
-- **`model`** — `ollama` (әдепкі) немесе кез келген OpenAI-үйлесімді API үшін `openai`: LM Studio (`http://127.0.0.1:1234/v1`), llama.cpp server, vLLM, OpenRouter, OpenAI. `api_key: ${OPENAI_API_KEY}` кілтті орта айнымалысынан алады — кілттерді файлға жазбаңыз.
-- **`browser`** — кірістірілген CapyBrowser құралдары, төмендегі жалаушалармен бірдей параметрлер. `enabled: false` — өшіру.
-- **`mcp_servers`** — `claude_desktop_config.json` форматындағы кез келген stdio MCP серверлері (`command`, `args`, `env`). Олардың құралдары браузермен қатар қосылады.
-- **`agent`** — `max_steps`, `keep_full_results` (шағын модельдердің контексі таза болуы үшін ескі нәтижелер қысқартылады) және қосымша `system_prompt`.
+**2. Оны қолданбаға көрсетіңіз.** `args` ішіне `--config` жалаушасы мен файл жолын қосыңыз. Файл `~/.capy.yaml` болса, ол автоматты түрде табылады — бұл қадамды өткізіп жіберуге болады.
 
-Файл осы ретпен ізделеді: `./capy.yaml`, содан кейін `~/.capy.yaml`; `-c` арқылы басқасын көрсетуге болады. Түсініктемелері бар толық үлгі: [`capy.yaml`](capy.yaml).
+```json
+{
+  "mcpServers": {
+    "capybrowser": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/capyriver/CapyBrowser", "capybrowser",
+               "--config", "C:/Users/me/capy.yaml"]
+    }
+  }
+}
+```
+
+**3. Қолданбаны қайта іске қосыңыз.** Енді модельде браузердің 6 құралы және `mcp_servers` ішіндегі барлық серверлердің құралдары бар.
+
+- Файл осы ретпен ізделеді: `--config`, `CAPYBROWSER_CONFIG` орта айнымалысы, `./capy.yaml`, `~/.capy.yaml` (Windows-та `~` — `C:\Users\<атыңыз>`).
+- `browser` параметрлері: `headed`, `lang`, `max_chars`, `allow_local_files`, `path`. Командалық жол жалаушалары файлдан басым.
+- `mcp_servers` ішіндегі әр серверде: `command`, `args`, `env`. `${VAR}` орта айнымалысымен алмастырылады — токендер мен кілттерді файлға жазудың қажеті жоқ.
+- Екі серверде аттас құрал болса, екіншісі `сервер__құрал` түрінде қолжетімді болады.
+- Іске қосылмаған сервер журналда ескертумен өткізіліп жіберіледі — браузер жұмысын жалғастырады.
+- Қате жазылған баптаулар үнсіз еленбей қалмайды: белгісіз бөлім не параметр түсінікті хабармен іске қосуды тоқтатады.
 
 ### <img src="assets/icons/capy-plug.svg" width="40" height="40" alt="" align="absmiddle" /> Қолданбаларға қосу
 
@@ -1158,6 +1225,7 @@ uv run https://raw.githubusercontent.com/capyriver/CapyBrowser/main/browser_mcp.
 
 | Жалауша | Орта айнымалысы | Әдепкі | Мағынасы |
 |---|---|---|---|
+| `--config PATH` | `CAPYBROWSER_CONFIG` | `./capy.yaml`, `~/.capy.yaml` | Браузер баптаулары мен қосымша MCP серверлері бар файл, capy.yaml бөлімін қараңыз. |
 | `--headed` | — | өшірулі | Браузер терезесін көрсету (агентті бақылау не жөндеу үшін). |
 | `--browser PATH` | `BROWSER_MCP_PATH` | авто | Нақты браузер файлы. |
 | `--max-chars N` | `BROWSER_MCP_MAX_CHARS` | `3500` | Кез келген құрал жауабының ең үлкен көлемі. |
